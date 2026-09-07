@@ -177,18 +177,21 @@ HTML_RED_FONDO = f"""
 
 components.html(HTML_RED_FONDO, height=0, scrolling=False)
 
-# Velo semitransparente de fondo (solo se ve en móvil, con la barra lateral abierta —
-# ver CSS más abajo). Es HTML normal insertado con st.markdown, así que su atributo
-# onclick funciona sin problema (a diferencia de las etiquetas <script>, que Streamlit
-# no ejecuta dentro de st.markdown). Abrir/cerrar la barra es una clase propia en <body>
-# (JS_TOGGLE_SIDEBAR, ver más abajo) — no depende de ningún control interno de Streamlit.
-st.markdown(
-    '<div class="vg-velo" onclick="document.body.classList.remove(\'vg-sidebar-abierta\')"></div>',
-    unsafe_allow_html=True,
-)
+# Apertura/cierre del panel de parámetros en móvil: se controla enteramente desde Python
+# con st.session_state (no con onclick/JS — Streamlit sanea el HTML insertado con
+# st.markdown y elimina los atributos "onclick", así que ese primer intento no llegaba a
+# ejecutarse nunca). El botón real (más abajo) cambia este valor y Streamlit vuelve a
+# ejecutar el script; el CSS de la barra lateral (más abajo) lee este mismo valor para
+# decidir si se muestra o no.
+if 'vg_parametros_movil_abiertos' not in st.session_state:
+    st.session_state['vg_parametros_movil_abiertos'] = False
 
-JS_TOGGLE_SIDEBAR = "document.body.classList.toggle('vg-sidebar-abierta')"
-JS_CERRAR_SIDEBAR = "document.body.classList.remove('vg-sidebar-abierta')"
+# Esta regla se incluye en el CSS de más abajo solo cuando el panel debe estar abierto —
+# así el propio Python decide si se ve o no, sin depender de ningún JS.
+ESTILO_SIDEBAR_MOVIL_ABIERTA = (
+    '[data-testid="stSidebar"] { transform: translateX(0) !important; visibility: visible !important; }'
+    if st.session_state['vg_parametros_movil_abiertos'] else ''
+)
 
 st.markdown(f"""
 <style>
@@ -275,14 +278,14 @@ st.markdown(f"""
             visibility: visible !important;
             margin-left: 0 !important;
         }}
-        .vg-chip-parametros, .vg-velo, .vg-drawer-cerrar {{ display: none !important; }}
+        .st-key-vg_chip_movil, .st-key-vg_velo, .st-key-vg_cerrar_movil {{ display: none !important; }}
     }}
 
     /* Móvil: la barra lateral deja de estar fija y pasa a ser un panel deslizante (drawer)
        que no empuja el contenido, priorizando que el contenido de la página ocupe toda la
-       pantalla. Se controla con una clase propia en <body> (no con el mecanismo interno de
-       Streamlit, que en algunas versiones no reacciona a un clic disparado por JS) — así que
-       abrir/cerrar es 100% nuestro y no depende de qué versión de Streamlit esté corriendo. */
+       pantalla. Se abre/cierra con botones reales de Streamlit (st.button) que cambian
+       st.session_state — nada de onclick/JS: Streamlit sanea el HTML de st.markdown y
+       elimina los atributos "onclick", así que un primer intento con eso no funcionaba. */
     @media (max-width: 768px) {{
         [data-testid="stSidebar"] {{
             width: 82vw !important;
@@ -292,35 +295,37 @@ st.markdown(f"""
             transform: translateX(-100%) !important;
             visibility: hidden !important;
             transition: transform .25s ease;
+            z-index: 999999;
         }}
-        body.vg-sidebar-abierta [data-testid="stSidebar"] {{
-            transform: translateX(0) !important;
-            visibility: visible !important;
+        {ESTILO_SIDEBAR_MOVIL_ABIERTA}
+
+        /* Burbuja de parámetros: contenedor con key="vg_chip_movil" (Streamlit añade la
+           clase st-key-vg_chip_movil al div que lo envuelve), con el botón real dentro
+           restyleado como píldora. */
+        .st-key-vg_chip_movil {{ margin: 4px 0 18px 0; }}
+        .st-key-vg_chip_movil button {{
+            width: 100%; display: flex; justify-content: space-between; align-items: center;
+            background: #FFFFFF !important; border: 1px solid {COLOR_BORDE} !important;
+            border-radius: 999px !important; padding: 9px 16px !important;
+            font-size: 12.5px !important; font-weight: 600 !important; color: {COLOR_TEXTO_SECUNDARIO} !important;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.06);
         }}
 
-        .vg-chip-parametros {{
-            display: flex; align-items: center; justify-content: space-between; gap: 8px;
-            background: #FFFFFF; border: 1px solid {COLOR_BORDE}; border-radius: 999px;
-            padding: 9px 14px; margin: 4px 0 18px 0; font-size: 12.5px; color: {COLOR_TEXTO_SECUNDARIO};
-            box-shadow: 0 1px 4px rgba(0,0,0,0.06); cursor: pointer;
+        /* Velo semitransparente de fondo, a pantalla completa: solo se renderiza (en Python)
+           cuando el panel está abierto, y tocarlo en cualquier punto también lo cierra. */
+        .st-key-vg_velo {{ position: fixed; inset: 0; z-index: 999998; }}
+        .st-key-vg_velo button {{
+            position: fixed; inset: 0; width: 100vw; height: 100vh;
+            background: rgba(15,23,42,0.35) !important; border: none !important;
+            color: transparent !important; font-size: 0 !important; padding: 0 !important;
         }}
-        .vg-chip-parametros b {{ color: {COLOR_NAVY_MARCA}; }}
-        .vg-chip-parametros .vg-chip-flecha {{ color: {COLOR_AMARILLO}; font-weight: 900; }}
-
-        /* Velo semitransparente detrás del panel: solo visible (y solo capta toques) con la
-           barra abierta; tocarlo también cierra el panel. */
-        .vg-velo {{
-            position: fixed; inset: 0; background: rgba(15,23,42,0.35);
-            opacity: 0; pointer-events: none; transition: opacity .25s ease;
-            z-index: 999998;
-        }}
-        body.vg-sidebar-abierta .vg-velo {{ opacity: 1; pointer-events: auto; }}
 
         /* Botón "✕" dentro de la propia barra lateral, para cerrarla sin tener que tocar
            fuera del panel. */
-        .vg-drawer-cerrar {{
-            position: absolute; top: 10px; right: 14px;
-            font-size: 15px; color: {COLOR_TEXTO_TERCIARIO}; cursor: pointer; z-index: 2;
+        .st-key-vg_cerrar_movil {{ position: absolute; top: 6px; right: 10px; z-index: 2; width: auto !important; }}
+        .st-key-vg_cerrar_movil button {{
+            background: transparent !important; border: none !important;
+            color: {COLOR_TEXTO_TERCIARIO} !important; font-size: 16px !important; padding: 2px 8px !important;
         }}
     }}
 
@@ -943,10 +948,10 @@ segmentos = obtener_segmentos()
 tabla_base = obtener_tabla_base(segmentos)
 
 with st.sidebar:
-    st.markdown(
-        f'<div class="vg-drawer-cerrar" onclick="{JS_CERRAR_SIDEBAR}">✕</div>',
-        unsafe_allow_html=True,
-    )
+    with st.container(key="vg_cerrar_movil"):
+        if st.button("✕", key="btn_cerrar_movil", help="Cerrar parámetros"):
+            st.session_state['vg_parametros_movil_abiertos'] = False
+            st.rerun()
     st.button("🏠  Inicio", use_container_width=False, on_click=volver_al_inicio, help="Limpia los resultados y vuelve a la pantalla inicial")
     st.markdown(f"<div style='height:1px; background:{COLOR_BORDE}; margin:14px 0 18px 0;'></div>", unsafe_allow_html=True)
     titulo_seccion("Parámetros")
@@ -961,18 +966,23 @@ with st.sidebar:
     )
     calcular = st.button("Calcular reparto", type="primary", use_container_width=True)
 
-# Burbuja con el resumen de los parámetros actuales (solo visible en móvil): además del
-# botón de hamburguesa, es el segundo indicio de que hay ajustes disponibles, y también
-# abre el mismo panel deslizante al tocarla.
+# Burbuja con el resumen de los parámetros actuales (solo visible en móvil, ver CSS): es
+# el indicio de que hay ajustes disponibles, y un botón real que abre el panel deslizante.
 _etq_horizonte_larga = ETIQUETAS_HORIZONTE.get(horizonte_semanas, f"{horizonte_semanas} semanas")
 _etq_horizonte_corta = _etq_horizonte_larga.split("(")[-1].rstrip(")") if "(" in _etq_horizonte_larga else _etq_horizonte_larga
-st.markdown(
-    f'<div class="vg-chip-parametros" onclick="{JS_TOGGLE_SIDEBAR}">'
-    f'<span>⚙ <b>{euros(presupuesto)}</b> · {euros(coste_por_hogar, 2)}/cliente · {_etq_horizonte_corta}</span>'
-    f'<span class="vg-chip-flecha">›</span>'
-    f'</div>',
-    unsafe_allow_html=True,
-)
+with st.container(key="vg_chip_movil"):
+    etiqueta_chip = f"⚙ {euros(presupuesto)} · {euros(coste_por_hogar, 2)}/cliente · {_etq_horizonte_corta}  ›"
+    if st.button(etiqueta_chip, key="btn_chip_movil"):
+        st.session_state['vg_parametros_movil_abiertos'] = True
+        st.rerun()
+
+# Velo semitransparente a pantalla completa: solo se renderiza cuando el panel está
+# abierto, y tocarlo en cualquier punto también lo cierra.
+if st.session_state['vg_parametros_movil_abiertos']:
+    with st.container(key="vg_velo"):
+        if st.button(" ", key="btn_velo"):
+            st.session_state['vg_parametros_movil_abiertos'] = False
+            st.rerun()
 
 if calcular:
     with st.spinner("Calculando…"):
@@ -995,6 +1005,7 @@ if calcular:
     st.session_state['retorno_incremental_total_igual'] = retorno_incremental_total_igual
     st.session_state['excedente_presupuesto_total'] = excedente_presupuesto_total
     st.session_state.pop('cliente_buscado', None)
+    st.session_state['vg_parametros_movil_abiertos'] = False  # en móvil, cierra el panel al calcular
 
 if 'tabla_resultado' not in st.session_state:
     total_clientes = int(tabla_base['n_hogares'].sum())
