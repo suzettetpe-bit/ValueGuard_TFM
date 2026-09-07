@@ -7,7 +7,9 @@ st.set_page_config(
     page_title="ValueGuard",
     page_icon="favicon_valueguard.png",
     layout="wide",
-    initial_sidebar_state="expanded",
+    # "auto": Streamlit decide según el ancho de pantalla — abierta en escritorio,
+    # cerrada en móvil (donde nuestra barra lateral pasa a ser un panel deslizante).
+    initial_sidebar_state="auto",
 )
 
 COLOR_TEXTO_PRINCIPAL = "#0F172A"
@@ -175,6 +177,19 @@ HTML_RED_FONDO = f"""
 
 components.html(HTML_RED_FONDO, height=0, scrolling=False)
 
+# Velo semitransparente de fondo (solo se ve en móvil, con la barra lateral abierta —
+# ver CSS más abajo). Es HTML normal insertado con st.markdown, así que su atributo
+# onclick funciona sin problema (a diferencia de las etiquetas <script>, que Streamlit
+# no ejecuta dentro de st.markdown). Abrir/cerrar la barra es una clase propia en <body>
+# (JS_TOGGLE_SIDEBAR, ver más abajo) — no depende de ningún control interno de Streamlit.
+st.markdown(
+    '<div class="vg-velo" onclick="document.body.classList.remove(\'vg-sidebar-abierta\')"></div>',
+    unsafe_allow_html=True,
+)
+
+JS_TOGGLE_SIDEBAR = "document.body.classList.toggle('vg-sidebar-abierta')"
+JS_CERRAR_SIDEBAR = "document.body.classList.remove('vg-sidebar-abierta')"
+
 st.markdown(f"""
 <style>
     html, body {{ font-size: 15px; }}
@@ -227,28 +242,87 @@ st.markdown(f"""
     h2, h3 {{ color: {COLOR_TEXTO_PRINCIPAL} !important; }}
 
     [data-testid="stSidebar"] {{
-        width: 300px !important;
-        min-width: 300px !important;
-        max-width: 300px !important;
-        transform: none !important;
-        visibility: visible !important;
-        margin-left: 0 !important;
         background-color: #FFFFFF;
         border-right: 1px solid {COLOR_BORDE};
         border-top: 4px solid {COLOR_AMARILLO};
-    }}
-    [data-testid="stSidebar"][aria-expanded="false"] {{
-        transform: none !important;
-        visibility: visible !important;
-        margin-left: 0 !important;
+        position: relative;
     }}
     [data-testid="stSidebar"] > div:first-child {{ height: 100vh; overflow-y: auto; }}
     [data-testid="stSidebarUserContent"] {{ padding-top: 1.25rem; padding-left: 1.4rem; padding-right: 1.4rem; }}
+    /* Los controles nativos de Streamlit para abrir/cerrar la barra se ocultan siempre: en
+       escritorio no hacen falta (la barra queda fija) y en móvil no se usan — la apertura y
+       cierre del panel la controla directamente nuestra propia burbuja de parámetros (más
+       abajo), con una clase en <body>, sin depender del mecanismo interno de Streamlit. */
     [data-testid="stSidebarCollapseButton"],
     [data-testid="stSidebarCollapsedControl"],
     [data-testid="collapsedControl"],
     [data-testid="stSidebarResizeHandle"],
     [data-testid="stSidebarNavCollapseIcon"] {{ display: none !important; }}
+
+    /* Escritorio/tablet ancho: la barra lateral se mantiene siempre visible, como hasta
+       ahora — y no se muestra la burbuja de parámetros (es solo móvil). */
+    @media (min-width: 769px) {{
+        [data-testid="stSidebar"] {{
+            width: 300px !important;
+            min-width: 300px !important;
+            max-width: 300px !important;
+            transform: none !important;
+            visibility: visible !important;
+            margin-left: 0 !important;
+        }}
+        [data-testid="stSidebar"][aria-expanded="false"] {{
+            transform: none !important;
+            visibility: visible !important;
+            margin-left: 0 !important;
+        }}
+        .vg-chip-parametros, .vg-velo, .vg-drawer-cerrar {{ display: none !important; }}
+    }}
+
+    /* Móvil: la barra lateral deja de estar fija y pasa a ser un panel deslizante (drawer)
+       que no empuja el contenido, priorizando que el contenido de la página ocupe toda la
+       pantalla. Se controla con una clase propia en <body> (no con el mecanismo interno de
+       Streamlit, que en algunas versiones no reacciona a un clic disparado por JS) — así que
+       abrir/cerrar es 100% nuestro y no depende de qué versión de Streamlit esté corriendo. */
+    @media (max-width: 768px) {{
+        [data-testid="stSidebar"] {{
+            width: 82vw !important;
+            min-width: 260px !important;
+            max-width: 340px !important;
+            box-shadow: 4px 0 24px rgba(0,0,0,0.18);
+            transform: translateX(-100%) !important;
+            visibility: hidden !important;
+            transition: transform .25s ease;
+        }}
+        body.vg-sidebar-abierta [data-testid="stSidebar"] {{
+            transform: translateX(0) !important;
+            visibility: visible !important;
+        }}
+
+        .vg-chip-parametros {{
+            display: flex; align-items: center; justify-content: space-between; gap: 8px;
+            background: #FFFFFF; border: 1px solid {COLOR_BORDE}; border-radius: 999px;
+            padding: 9px 14px; margin: 4px 0 18px 0; font-size: 12.5px; color: {COLOR_TEXTO_SECUNDARIO};
+            box-shadow: 0 1px 4px rgba(0,0,0,0.06); cursor: pointer;
+        }}
+        .vg-chip-parametros b {{ color: {COLOR_NAVY_MARCA}; }}
+        .vg-chip-parametros .vg-chip-flecha {{ color: {COLOR_AMARILLO}; font-weight: 900; }}
+
+        /* Velo semitransparente detrás del panel: solo visible (y solo capta toques) con la
+           barra abierta; tocarlo también cierra el panel. */
+        .vg-velo {{
+            position: fixed; inset: 0; background: rgba(15,23,42,0.35);
+            opacity: 0; pointer-events: none; transition: opacity .25s ease;
+            z-index: 999998;
+        }}
+        body.vg-sidebar-abierta .vg-velo {{ opacity: 1; pointer-events: auto; }}
+
+        /* Botón "✕" dentro de la propia barra lateral, para cerrarla sin tener que tocar
+           fuera del panel. */
+        .vg-drawer-cerrar {{
+            position: absolute; top: 10px; right: 14px;
+            font-size: 15px; color: {COLOR_TEXTO_TERCIARIO}; cursor: pointer; z-index: 2;
+        }}
+    }}
 
     /* Botón "Inicio": única acción secundaria de la barra lateral (la otra es "Calcular
        reparto", type="primary") — se le da un estilo tipo "ghost", más ligero. */
@@ -869,6 +943,10 @@ segmentos = obtener_segmentos()
 tabla_base = obtener_tabla_base(segmentos)
 
 with st.sidebar:
+    st.markdown(
+        f'<div class="vg-drawer-cerrar" onclick="{JS_CERRAR_SIDEBAR}">✕</div>',
+        unsafe_allow_html=True,
+    )
     st.button("🏠  Inicio", use_container_width=False, on_click=volver_al_inicio, help="Limpia los resultados y vuelve a la pantalla inicial")
     st.markdown(f"<div style='height:1px; background:{COLOR_BORDE}; margin:14px 0 18px 0;'></div>", unsafe_allow_html=True)
     titulo_seccion("Parámetros")
@@ -882,6 +960,19 @@ with st.sidebar:
         format_func=lambda semanas: ETIQUETAS_HORIZONTE.get(semanas, f"{semanas} semanas"),
     )
     calcular = st.button("Calcular reparto", type="primary", use_container_width=True)
+
+# Burbuja con el resumen de los parámetros actuales (solo visible en móvil): además del
+# botón de hamburguesa, es el segundo indicio de que hay ajustes disponibles, y también
+# abre el mismo panel deslizante al tocarla.
+_etq_horizonte_larga = ETIQUETAS_HORIZONTE.get(horizonte_semanas, f"{horizonte_semanas} semanas")
+_etq_horizonte_corta = _etq_horizonte_larga.split("(")[-1].rstrip(")") if "(" in _etq_horizonte_larga else _etq_horizonte_larga
+st.markdown(
+    f'<div class="vg-chip-parametros" onclick="{JS_TOGGLE_SIDEBAR}">'
+    f'<span>⚙ <b>{euros(presupuesto)}</b> · {euros(coste_por_hogar, 2)}/cliente · {_etq_horizonte_corta}</span>'
+    f'<span class="vg-chip-flecha">›</span>'
+    f'</div>',
+    unsafe_allow_html=True,
+)
 
 if calcular:
     with st.spinner("Calculando…"):

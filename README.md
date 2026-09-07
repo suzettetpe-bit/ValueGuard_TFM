@@ -1,6 +1,6 @@
 # ValueGuard
 
-ValueGuard — Motor de priorización de inversión en fidelización basado en CLV, tendencia de valor e inferencia causal.
+ValueGuard — motor de priorización de inversión en fidelización basado en CLV, tendencia de valor e inferencia causal.
 
 Motor de marketing analytics para la priorización de inversión en fidelización de clientes, basado en CLV, trayectoria de valor e inferencia causal.
 
@@ -53,4 +53,3 @@ streamlit run app.py
 Estimación causal cuasi-experimental (matching, no aleatorización); modelo de CLV con error relativo ~39%. Detalle completo en la memoria del TFM.
 
 TFM — Máster en Data Science, Big Data & Business Analytics, UCM.
-
