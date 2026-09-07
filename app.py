@@ -278,7 +278,7 @@ st.markdown(f"""
             visibility: visible !important;
             margin-left: 0 !important;
         }}
-        .st-key-vg_chip_movil, .st-key-vg_velo, .st-key-vg_cerrar_movil {{ display: none !important; }}
+        .st-key-vg_chip_movil, .st-key-vg_cerrar_movil, .vg-velo-visual {{ display: none !important; }}
     }}
 
     /* Móvil: la barra lateral deja de estar fija y pasa a ser un panel deslizante (drawer)
@@ -305,19 +305,21 @@ st.markdown(f"""
         .st-key-vg_chip_movil {{ margin: 4px 0 18px 0; }}
         .st-key-vg_chip_movil button {{
             width: 100%; display: flex; justify-content: space-between; align-items: center;
-            background: #FFFFFF !important; border: 1px solid {COLOR_BORDE} !important;
+            background: #FFFFFF !important; border: 1px solid {COLOR_AMARILLO} !important;
             border-radius: 999px !important; padding: 9px 16px !important;
             font-size: 12.5px !important; font-weight: 600 !important; color: {COLOR_TEXTO_SECUNDARIO} !important;
-            box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+            box-shadow: 0 0 0 0 rgba(253,201,0,0.55);
+            animation: vg-chip-pulso 2.2s ease-out 3;
         }}
-
-        /* Velo semitransparente de fondo, a pantalla completa: solo se renderiza (en Python)
-           cuando el panel está abierto, y tocarlo en cualquier punto también lo cierra. */
-        .st-key-vg_velo {{ position: fixed; inset: 0; z-index: 999998; }}
-        .st-key-vg_velo button {{
-            position: fixed; inset: 0; width: 100vw; height: 100vh;
-            background: rgba(15,23,42,0.35) !important; border: none !important;
-            color: transparent !important; font-size: 0 !important; padding: 0 !important;
+        /* Pulso alrededor de la burbuja, unas pocas veces al cargar la página — para que un
+           usuario que nunca ha visto la app entienda que ahí hay algo que se puede tocar. */
+        @keyframes vg-chip-pulso {{
+            0%   {{ box-shadow: 0 0 0 0 rgba(253,201,0,0.55); }}
+            70%  {{ box-shadow: 0 0 0 10px rgba(253,201,0,0); }}
+            100% {{ box-shadow: 0 0 0 0 rgba(253,201,0,0); }}
+        }}
+        @media (prefers-reduced-motion: reduce) {{
+            .st-key-vg_chip_movil button {{ animation: none; }}
         }}
 
         /* Botón "✕" dentro de la propia barra lateral, para cerrarla sin tener que tocar
@@ -326,6 +328,17 @@ st.markdown(f"""
         .st-key-vg_cerrar_movil button {{
             background: transparent !important; border: none !important;
             color: {COLOR_TEXTO_TERCIARIO} !important; font-size: 16px !important; padding: 2px 8px !important;
+        }}
+
+        /* Capa de fondo detrás del panel: un <div> normal insertado con st.markdown, no un
+           st.button — así no hereda ningún estilo por defecto de Streamlit que pueda pintarlo
+           de blanco por encima (el problema de los intentos anteriores). Solo visual, sin
+           clic (para cerrar se usa el botón "✕"); opacidad baja para que se note que hay
+           algo detrás sin tapar el contenido. */
+        .vg-velo-visual {{
+            position: fixed; inset: 0; z-index: 999998;
+            background: rgba(15,23,42,0.1);
+            pointer-events: none;
         }}
     }}
 
@@ -463,6 +476,22 @@ st.markdown(f"""
     [data-testid="stRadio"] div[role="radiogroup"] > label[aria-checked="true"] p {{
         color: {COLOR_TEXTO_PRINCIPAL} !important;
         font-weight: 600 !important;
+    }}
+
+    /* Fondo sólido para las pestañas de "Sección" y todo el contenido de resultados que va
+       debajo: sin esto, el patrón animado de fondo se transparenta entre los huecos de las
+       tarjetas/tablas, sobre todo en móvil (donde las columnas se apilan y hay más huecos
+       visibles). Se aplica al contenedor de la pestaña y a todos sus hermanos siguientes
+       dentro del mismo bloque (el resto del contenido de "Resultados"/"Clientes a
+       contactar"/etc.), para que ninguno deje ver el fondo detrás. */
+    div[data-testid="stElementContainer"]:has([data-testid="stRadio"]),
+    div[data-testid="stElementContainer"]:has([data-testid="stRadio"]) ~ div[data-testid="stElementContainer"],
+    div[data-testid="stElementContainer"]:has([data-testid="stRadio"]) ~ div[data-testid="stHorizontalBlock"] {{
+        background: {COLOR_FONDO};
+    }}
+    div[data-testid="stElementContainer"]:has([data-testid="stRadio"]) {{
+        padding-top: 10px;
+        border-radius: 12px 12px 0 0;
     }}
 
     .vg-tarjeta {{
@@ -908,6 +937,7 @@ def consultar_cliente(household_key, segmentos, tabla_resultado):
 def volver_al_inicio():
     for clave in CLAVES_RESULTADO:
         st.session_state.pop(clave, None)
+    st.session_state['vg_parametros_movil_abiertos'] = False  # en móvil, cierra el panel también
 
 
 col_logo, col_meta = st.columns([3, 1])
@@ -971,18 +1001,15 @@ with st.sidebar:
 _etq_horizonte_larga = ETIQUETAS_HORIZONTE.get(horizonte_semanas, f"{horizonte_semanas} semanas")
 _etq_horizonte_corta = _etq_horizonte_larga.split("(")[-1].rstrip(")") if "(" in _etq_horizonte_larga else _etq_horizonte_larga
 with st.container(key="vg_chip_movil"):
-    etiqueta_chip = f"⚙ {euros(presupuesto)} · {euros(coste_por_hogar, 2)}/cliente · {_etq_horizonte_corta}  ›"
+    etiqueta_chip = f"👆 Ajustar parámetros — {euros(presupuesto)} · {euros(coste_por_hogar, 2)}/cliente · {_etq_horizonte_corta}  ›"
     if st.button(etiqueta_chip, key="btn_chip_movil"):
         st.session_state['vg_parametros_movil_abiertos'] = True
         st.rerun()
 
-# Velo semitransparente a pantalla completa: solo se renderiza cuando el panel está
-# abierto, y tocarlo en cualquier punto también lo cierra.
+# Capa de fondo, solo visual (sin clic — se cierra con el botón "✕" del panel): un <div>
+# simple, no un botón, para que no pueda heredar ningún estilo por defecto de Streamlit.
 if st.session_state['vg_parametros_movil_abiertos']:
-    with st.container(key="vg_velo"):
-        if st.button(" ", key="btn_velo"):
-            st.session_state['vg_parametros_movil_abiertos'] = False
-            st.rerun()
+    st.markdown('<div class="vg-velo-visual"></div>', unsafe_allow_html=True)
 
 if calcular:
     with st.spinner("Calculando…"):
@@ -1005,7 +1032,13 @@ if calcular:
     st.session_state['retorno_incremental_total_igual'] = retorno_incremental_total_igual
     st.session_state['excedente_presupuesto_total'] = excedente_presupuesto_total
     st.session_state.pop('cliente_buscado', None)
-    st.session_state['vg_parametros_movil_abiertos'] = False  # en móvil, cierra el panel al calcular
+    if st.session_state['vg_parametros_movil_abiertos']:
+        # El CSS que abre/cierra el panel en móvil se calcula al principio del script, antes
+        # de llegar aquí — así que sin un rerun, esta misma ejecución seguiría mostrando el
+        # panel abierto (con el CSS ya calculado con el valor viejo) y hacía falta un segundo
+        # clic para que se notara. Con el rerun, la próxima pasada ya sale con el valor nuevo.
+        st.session_state['vg_parametros_movil_abiertos'] = False
+        st.rerun()
 
 if 'tabla_resultado' not in st.session_state:
     total_clientes = int(tabla_base['n_hogares'].sum())
@@ -1242,9 +1275,10 @@ else:
         st.download_button("Descargar lista (CSV)", csv, f"clientes_{cuadrante_elegido}.csv", "text/csv")
 
     elif seccion == "Explicación":
-        explicacion, es_ia = backend.generar_explicacion(
-            st.session_state['presupuesto'], st.session_state['tabla_resultado'], pct_cartera_protegida, retorno_incremental_total
-        )
+        with st.spinner("Generando la explicación con IA…"):
+            explicacion, es_ia = backend.generar_explicacion(
+                st.session_state['presupuesto'], st.session_state['tabla_resultado'], pct_cartera_protegida, retorno_incremental_total
+            )
         etiqueta_fuente = "" if es_ia else f"<div style='font-size:12px; color:{COLOR_TEXTO_TERCIARIO}; margin-top:12px;'>Generado con plantilla</div>"
         st.markdown(f"""
         <div class="vg-ficha" style="line-height:1.7;">
