@@ -237,38 +237,26 @@ ESTILO_SIDEBAR_MOVIL_ABIERTA = (
     if st.session_state['vg_parametros_movil_abiertos'] else ''
 )
 
-# Misma técnica para la tarjeta expandible de "✨ Interpretación": el estado (abierta o no) se
+# Misma técnica para el panel deslizante de "✨ Interpretación": el estado (abierto o no) se
 # decide en Python, pero hace falta leerlo ANTES de este bloque de estilos (donde vive el CSS
-# de expansión, más abajo) para poder inyectar la regla condicional que hace crecer la
-# tarjeta — de ahí que se inicialice aquí y no junto al resto de esa sección, más adelante en
-# el script.
+# del panel, más abajo) para poder inyectar la regla condicional que lo hace entrar en pantalla
+# — de ahí que se inicialice aquí y no junto al resto de esa sección, más adelante en el script.
 if 'vg_ia_abierta' not in st.session_state:
     st.session_state['vg_ia_abierta'] = False
 
 ESTILO_IA_ABIERTA = (
     """
-    /* Al abrirse, la tarjeta deja de ser "transparente + sin relleno" (estado de reposo, solo
-       botón) y pasa a pintarse como panel violeta con degradado — el mismo cambio de tamaño
-       (arriba, siempre activo) más este cambio de relleno es lo que hace que se lea como
-       "el botón se ha convertido en tarjeta", no como una tarjeta nueva apareciendo al lado. */
-    .st-key-vg_ia_card {
-        background: linear-gradient(135deg, __OSCURO__ 0%, __BASE__ 100%) !important;
-        box-shadow: 0 18px 40px rgba(76,62,209,0.28) !important;
-        padding: 22px 24px !important;
-    }
+    /* Al abrirse, el panel solo cambia su transform — de "fuera de pantalla" (translateX/Y del
+       100%, definido siempre arriba) a "en su sitio" (0) — así que el propio panel nunca
+       cambia de tamaño ni de relleno, solo entra deslizándose desde su borde. */
     @media (min-width: 769px) {
-        .st-key-vg_ia_card { max-width: 620px !important; }
+        .st-key-vg_ia_panel { transform: translateX(0) !important; }
     }
     @media (max-width: 768px) {
-        .st-key-vg_ia_card {
-            left: 0 !important; right: 0 !important; bottom: 0 !important; top: auto !important;
-            width: 100% !important; max-width: none !important; height: auto !important;
-            max-height: 82vh !important; border-radius: 20px 20px 0 0 !important;
-            padding: 22px 22px 30px !important;
-        }
-        .vg-ia-velo { opacity: 1 !important; pointer-events: auto !important; }
+        .st-key-vg_ia_panel { transform: translateY(0) !important; }
     }
-    """.replace('__OSCURO__', COLOR_IA_OSCURO).replace('__BASE__', COLOR_IA)
+    .vg-ia-velo { opacity: 1 !important; pointer-events: auto !important; }
+    """
     if st.session_state['vg_ia_abierta'] else ''
 )
 
@@ -897,35 +885,37 @@ st.markdown(f"""
     .vg-resultado-texto {{ font-size: 13px; color: {COLOR_TEXTO_SECUNDARIO}; line-height: 1.6; margin-top: 14px; }}
     .vg-resultado-texto strong {{ color: {COLOR_TEXTO_PRINCIPAL}; }}
 
-    /* Capa "✨ Interpretación": expanding insight card — no un botón suelto ni un modal, sino
-       el propio disparador convirtiéndose en tarjeta. `st.container(key="vg_ia_card")` es el
-       ÚNICO nodo persistente: en reposo solo contiene la píldora violeta "✨ Explicar con IA";
-       al pulsarla, Python decide (vía ESTILO_IA_ABIERTA, más arriba en el script) que el mismo
-       contenedor pase a ocupar más espacio, y ese cambio de tamaño se anima con una transición
-       CSS normal — Streamlit reconcilia el DOM en el sitio (mismo patrón ya probado para la
-       barra lateral móvil, sección 21), así que el "crecimiento" se ve fluido aunque lo
-       dispare un st.rerun() y no JavaScript (Streamlit sanea el HTML insertado con
-       st.markdown y elimina los atributos "onclick", así que un toggle en CSS puro con
-       <input type="checkbox"> tampoco es fiable aquí — de ahí seguir con st.button +
-       session_state, el único mecanismo de interacción que ha funcionado de forma consistente
-       en esta app). En escritorio la tarjeta crece en anchura, en el mismo sitio (sin overlay,
-       sin fondo oscurecido — nunca un modal); en móvil el mismo nodo pasa de "botón flotante"
-       a "hoja inferior" fija, con velo detrás. */
-    .st-key-vg_ia_card {{
-        position: relative; overflow: hidden; border-radius: 18px;
-        transition: max-width .32s cubic-bezier(.22,.9,.32,1), width .32s cubic-bezier(.22,.9,.32,1),
-                    padding .32s cubic-bezier(.22,.9,.32,1), background .32s ease, box-shadow .32s ease,
-                    bottom .32s cubic-bezier(.22,.9,.32,1), right .32s cubic-bezier(.22,.9,.32,1),
-                    border-radius .32s ease;
-        background: transparent; box-shadow: none; padding: 0;
+    /* Capa "✨ Interpretación": panel deslizante — no un botón suelto ni un modal encima de todo,
+       sino una ventana propia que entra desde el borde de la pantalla. `st.container(key=
+       "vg_ia_panel")` es el nodo persistente que Streamlit renderiza en TODAS las pasadas
+       (esté abierto o no, con o sin contenido dentro) — igual que el panel de parámetros móvil
+       (sección 21): al ser el mismo nodo en el mismo sitio del árbol, un cambio de `transform`
+       entre una pasada y la siguiente se anima con una transición CSS normal, aunque lo dispare
+       un st.rerun() y no JavaScript. En escritorio el panel vive fijo a la derecha, oculto con
+       `translateX(100%)` y entra con `translateX(0)`; en móvil vive fijo abajo, oculto con
+       `translateY(100%)` y entra con `translateY(0)` — misma técnica, distinto eje. El
+       disparador ("✨ Explicar con IA") es un nodo aparte (`vg_ia_trigger`), en el flujo normal
+       de la pestaña, que solo se renderiza mientras el panel está cerrado — así nunca conviven
+       los dos en pantalla. */
+    .st-key-vg_ia_panel {{
+        position: fixed; z-index: 1000; overflow-y: auto;
+        background: linear-gradient(165deg, {COLOR_IA_OSCURO} 0%, {COLOR_IA} 100%);
+        transition: transform .32s cubic-bezier(.22,.9,.32,1);
     }}
     @media (min-width: 769px) {{
-        .st-key-vg_ia_card {{ max-width: 250px; }}
+        .st-key-vg_ia_panel {{
+            top: 0; right: 0; bottom: 0; left: auto; height: 100vh;
+            width: 400px; max-width: 92vw;
+            box-shadow: -18px 0 40px rgba(30,20,90,0.30);
+            padding: 30px 28px; transform: translateX(100%);
+        }}
     }}
     @media (max-width: 768px) {{
-        .st-key-vg_ia_card {{
-            position: fixed; z-index: 1000; left: auto; top: auto;
-            right: 18px; bottom: 22px; width: auto; max-width: 200px;
+        .st-key-vg_ia_panel {{
+            left: 0; right: 0; bottom: 0; top: auto; width: 100%;
+            max-height: 82vh; border-radius: 20px 20px 0 0;
+            box-shadow: 0 -18px 40px rgba(30,20,90,0.30);
+            padding: 16px 22px 30px; transform: translateY(100%);
         }}
     }}
     {ESTILO_IA_ABIERTA}
@@ -953,10 +943,10 @@ st.markdown(f"""
     }}
     .st-key-vg_ia_trigger_btn button:active {{ transform: scale(0.96) !important; }}
 
-    /* Contenido de la tarjeta abierta (kicker, titular, texto, fuente): entra con un fundido +
-       desplazamiento muy sutil, ligeramente retrasado respecto al crecimiento del contenedor,
+    /* Contenido del panel (kicker, titular, texto, fuente): entra con un fundido +
+       desplazamiento muy sutil, ligeramente retrasado respecto al deslizamiento del panel,
        para que se lea como "revelado" y no como un parpadeo. */
-    .vg-ia-contenido {{ animation: vg-ia-aparece .3s cubic-bezier(.22,.9,.32,1) .08s both; }}
+    .vg-ia-contenido {{ animation: vg-ia-aparece .3s cubic-bezier(.22,.9,.32,1) .12s both; }}
     @keyframes vg-ia-aparece {{
         from {{ opacity: 0; transform: translateY(6px); }}
         to   {{ opacity: 1; transform: translateY(0); }}
@@ -964,15 +954,15 @@ st.markdown(f"""
     .vg-ia-kicker {{
         display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: 0.08em;
         text-transform: uppercase; color: #FFFFFF; background: rgba(255,255,255,0.16);
-        padding: 4px 11px; border-radius: 999px; margin-bottom: 12px;
+        padding: 4px 11px; border-radius: 999px; margin-bottom: 14px;
     }}
-    .vg-ia-titular {{ font-size: 17px; font-weight: 700; color: #FFFFFF; line-height: 1.35; margin-bottom: 10px; }}
-    .vg-ia-texto {{ font-size: 13.5px; color: #EDE9FC; line-height: 1.6; }}
+    .vg-ia-titular {{ font-size: 19px; font-weight: 700; color: #FFFFFF; line-height: 1.35; margin-bottom: 12px; }}
+    .vg-ia-texto {{ font-size: 14px; color: #EDE9FC; line-height: 1.65; }}
     .vg-ia-texto strong {{ color: #FFFFFF; }}
-    .vg-ia-fuente {{ font-size: 12px; color: #C9BEF2; margin-top: 10px; }}
+    .vg-ia-fuente {{ font-size: 12px; color: #C9BEF2; margin-top: 12px; }}
 
     /* Estado "analizando": un halo blanco que late, no un espiner genérico ni un "escribiendo…"
-       de chat — sigue siendo una tarjeta de datos, no una conversación. */
+       de chat — sigue siendo un panel de datos, no una conversación. */
     .vg-ia-analizando {{ display: flex; align-items: center; gap: 10px; padding: 2px 0; }}
     .vg-ia-halo {{
         width: 12px; height: 12px; border-radius: 50%; background: #FFFFFF; flex: 0 0 auto;
@@ -984,12 +974,12 @@ st.markdown(f"""
     }}
     .vg-ia-analizando-texto {{ font-size: 13.5px; font-weight: 600; color: #FFFFFF; }}
 
-    /* Cierre: "✕" circular en la esquina de la tarjeta abierta, no un enlace de texto — así
-       lee como el cierre de una tarjeta/panel, no como una acción secundaria de formulario. */
-    .st-key-vg_ia_cerrar {{ position: absolute; top: 14px; right: 14px; z-index: 2; }}
+    /* Cierre: "✕" circular en la esquina del panel, no un enlace de texto — así lee como el
+       cierre de un panel, no como una acción secundaria de formulario. */
+    .st-key-vg_ia_cerrar {{ position: absolute; top: 16px; right: 16px; z-index: 2; }}
     .st-key-vg_ia_cerrar button {{
         background: rgba(255,255,255,0.16) !important; border: none !important; border-radius: 50% !important;
-        width: 28px !important; height: 28px !important; padding: 0 !important; min-height: unset !important;
+        width: 30px !important; height: 30px !important; padding: 0 !important; min-height: unset !important;
         display: flex !important; align-items: center !important; justify-content: center !important;
         transition: background .2s ease !important;
     }}
@@ -997,10 +987,11 @@ st.markdown(f"""
     .st-key-vg_ia_cerrar button:hover {{ background: rgba(255,255,255,0.32) !important; }}
     .st-key-vg_ia_cerrar button:focus-visible {{ outline: 2px solid #FFFFFF !important; outline-offset: 2px !important; }}
 
-    /* Manija decorativa de la hoja inferior (solo móvil, solo con la tarjeta abierta) y velo
-       semitransparente detrás — mismo recurso ya usado y corregido para el panel de
-       parámetros móvil (sección 21): un <div> normal, nunca un st.button, para que el color
-       de fondo no dependa de anular los estilos por defecto de un botón de Streamlit. */
+    /* Manija decorativa de la hoja inferior (solo móvil) y velo semitransparente detrás del
+       panel — mismo recurso ya usado y corregido para el panel de parámetros móvil (sección
+       21): un <div> normal, nunca un st.button, para que el color de fondo no dependa de
+       anular los estilos por defecto de un botón de Streamlit. El velo cubre toda la pantalla
+       en escritorio y en móvil (el panel es un drawer en ambos casos, ya no solo en móvil). */
     .vg-ia-manija {{ display: none; }}
     .vg-ia-velo {{
         position: fixed; inset: 0; z-index: 999; background: rgba(15,23,42,0.45);
@@ -1009,15 +1000,12 @@ st.markdown(f"""
     @media (max-width: 768px) {{
         .vg-ia-manija {{ display: block; width: 36px; height: 4px; border-radius: 999px; background: rgba(255,255,255,0.4); margin: 0 auto 14px; }}
     }}
-    @media (min-width: 769px) {{
-        .vg-ia-velo {{ display: none; }}
-    }}
 
     @media (prefers-reduced-motion: reduce) {{
         .vg-hero-red {{ animation: none; }}
         .vg-tarjeta {{ transition: none; }}
         .vg-ia-halo {{ animation: none; }}
-        .st-key-vg_ia_card {{ transition: none; }}
+        .st-key-vg_ia_panel {{ transition: none; }}
         .vg-ia-contenido {{ animation: none; }}
     }}
 </style>
@@ -1940,19 +1928,26 @@ else:
             if 'vg_ia_abierta' not in st.session_state:
                 st.session_state['vg_ia_abierta'] = False
 
-            # Velo (solo visible en móvil, vía CSS): un <div> normal, nunca un st.button —
-            # un botón aquí competiría con el estilo nativo de Streamlit y además "robaría"
-            # el foco/tabulación sin aportar ninguna acción real (ver sección 21 del historial).
-            st.markdown('<div class="vg-ia-velo"></div>', unsafe_allow_html=True)
-
-            with st.container(key="vg_ia_card"):
-                if not st.session_state['vg_ia_abierta']:
-                    # Estado de reposo: solo la píldora violeta, sin titular ni subtítulo — el
-                    # propio botón destacado ES el disparador, sin nada alrededor que lo diluya.
+            # Disparador: nodo aparte del panel, en el flujo normal de la pestaña, y solo se
+            # renderiza mientras el panel está cerrado — así nunca coexisten los dos en pantalla
+            # (si aparecieran ambos sería precisamente el bug de "el botón sale duplicado").
+            if not st.session_state['vg_ia_abierta']:
+                with st.container(key="vg_ia_trigger"):
                     if st.button("✨ Explicar con IA", key="vg_ia_trigger_btn"):
                         st.session_state['vg_ia_abierta'] = True
                         st.rerun()
-                else:
+
+            # Velo detrás del panel — un <div> normal, nunca un st.button (ver sección 21 del
+            # historial): un botón aquí competiría con el estilo nativo de Streamlit. Se
+            # renderiza siempre; el CSS decide si se ve (solo cuando el panel está abierto).
+            st.markdown('<div class="vg-ia-velo"></div>', unsafe_allow_html=True)
+
+            # Panel: `st.container(key="vg_ia_panel")` se renderiza en TODAS las pasadas del
+            # script (abierto o no) para que sea el mismo nodo del DOM en el mismo sitio del
+            # árbol — solo así el cambio de `transform` (fuera de pantalla -> en su sitio) se
+            # anima con una transición CSS normal en vez de aparecer ya colocado sin animar.
+            with st.container(key="vg_ia_panel"):
+                if st.session_state['vg_ia_abierta']:
                     st.markdown('<div class="vg-ia-manija"></div>', unsafe_allow_html=True)
                     with st.container(key="vg_ia_cerrar"):
                         if st.button("✕", key="vg_ia_cerrar_btn", help="Cerrar"):
@@ -1982,8 +1977,7 @@ else:
 
                     # Un único bloque de texto, sin desglosar en tarjetas de evidencia ni
                     # desplegables: el "por qué" de la IA, el "qué significa" y la acción
-                    # sugerida se funden en un solo párrafo — la conclusión breve que pide el
-                    # diseño de tarjeta expandible, no un informe.
+                    # sugerida se funden en un solo párrafo.
                     texto_ia = f"{datos_ia['explicacion']} {datos_ia['significado']} {datos_ia['accion']}"
                     etiqueta_fuente = "" if es_ia else "<div class='vg-ia-fuente'>Generado con plantilla (sin conexión a la IA)</div>"
 
