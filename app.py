@@ -710,6 +710,26 @@ st.markdown(f"""
         display: flex; align-items: center;
     }}
     .st-key-vg_buscador_pill [data-testid="stForm"] {{ border: none !important; padding: 0 !important; background: transparent !important; width: 100%; }}
+    /* El problema real de la captura no era de color: en móvil, "st.columns" apila el input y
+       el botón "Buscar" en dos filas (comportamiento ya documentado en esta app — ver sección
+       23 del registro de decisiones), y la píldora exterior tiene un border-radius muy grande
+       (999px, pensado para una sola fila) con un padding estrecho — así que el botón, al pasar
+       a ser la segunda fila, sobresalía por la esquina inferior derecha, fuera de la curva
+       redondeada del fondo blanco. Se fuerza aquí a que el input y el botón se queden SIEMPRE
+       en la misma fila (nunca apilados), dándole al botón un ancho fijo en vez de "100% de su
+       columna" y dejando que el input ocupe el resto — así la píldora nunca necesita una
+       segunda fila y el problema de origen desaparece en vez de maquillarse. */
+    .st-key-vg_buscador_pill [data-testid="stHorizontalBlock"] {{
+        flex-direction: row !important; flex-wrap: nowrap !important;
+        align-items: center !important; gap: 6px !important; width: 100% !important;
+    }}
+    .st-key-vg_buscador_pill [data-testid="stColumn"]:first-child {{
+        flex: 1 1 auto !important; width: auto !important; min-width: 0 !important;
+    }}
+    .st-key-vg_buscador_pill [data-testid="stColumn"]:last-child {{
+        flex: 0 0 auto !important; width: 108px !important; min-width: 108px !important;
+    }}
+    .st-key-vg_buscador_pill [data-testid="stFormSubmitButton"] {{ width: 100% !important; }}
     /* El número de cliente es un input nativo, y en Chrome Android el navegador le pinta un
        fondo amarillo/crema propio (el resaltado de autocompletar) que no tiene nada que ver
        con los colores de la app — por eso no aparecía ni en el canvas de diseño ni en
