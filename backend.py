@@ -244,7 +244,12 @@ def generar_interpretacion(presupuesto_total, tabla_resultado, pct_cartera_prote
             raise RuntimeError(
                 "OPENAI_API_KEY no está definida en el entorno (revisa los 'Secrets' de la app en Streamlit Cloud)."
             )
-        client = OpenAI(api_key=clave)
+        # timeout corto y explícito: sin él, si la llamada se queda colgada (red lenta, proxy,
+        # DNS, firewall corporativo — cualquier fallo que no devuelva un error inmediato), todo
+        # el script de Streamlit se bloquea esperando indefinidamente y la app entera parece
+        # congelada, sin ninguna forma de interactuar con ella hasta que la petición termine.
+        # Con el límite, si no responde a tiempo simplemente cae al respaldo en Python puro.
+        client = OpenAI(api_key=clave, timeout=8.0, max_retries=0)
         respuesta = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],

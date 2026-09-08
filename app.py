@@ -980,9 +980,13 @@ st.markdown(f"""
     }}
     .vg-ia-analizando-texto {{ font-size: 13.5px; font-weight: 600; color: #FFFFFF; }}
 
-    /* Cierre: "✕" circular en la esquina del panel, no un enlace de texto — así lee como el
-       cierre de un panel, no como una acción secundaria de formulario. */
-    .st-key-vg_ia_cerrar {{ position: absolute; top: 16px; right: 16px; z-index: 2; }}
+    /* Cierre: "✕" circular alineado a la derecha, arriba del todo del panel — no un enlace de
+       texto, así lee como el cierre de un panel, no como una acción secundaria de formulario.
+       Deliberadamente NO usa position:absolute (eso depende de qué nodo exacto de Streamlit
+       actúe como referencia, y ya se vio en otras partes de esta app que ese nodo puede no ser
+       el esperado): con flexbox + justify-content, el botón queda pegado al borde derecho
+       dentro del flujo normal, sin depender de ninguna suposición sobre el DOM interno. */
+    .st-key-vg_ia_cerrar {{ display: flex; justify-content: flex-end; margin-bottom: 6px; }}
     .st-key-vg_ia_cerrar button {{
         background: rgba(255,255,255,0.16) !important; border: none !important; border-radius: 50% !important;
         width: 30px !important; height: 30px !important; padding: 0 !important; min-height: unset !important;
