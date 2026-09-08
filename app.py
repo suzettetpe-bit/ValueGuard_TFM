@@ -765,19 +765,38 @@ st.markdown(f"""
     .vg-buscador-nota {{ position: relative; z-index: 1; font-size: 12px; color: #C7DCF0; margin-top: 10px; }}
     /* "Limpiar búsqueda": solo texto subrayado, sin caja de botón en ningún estado (ni en
        hover/focus, donde el estilo "secondary" de más arriba le pondría fondo azul claro
-       por defecto) — deliberadamente el elemento con menos peso visual de todo el hero. */
+       por defecto) — deliberadamente el elemento con menos peso visual de todo el hero.
+       Lección de especificidad (misma familia que la de la sección 36, pero en la caja
+       entera, no solo el texto): la regla global de botones "secondary" (más arriba en este
+       mismo bloque) usa selectores del tipo ".stButton button[kind="secondary"]" — una clase
+       + un atributo + el elemento, más específico que ".st-key-vg_buscador_limpiar button"
+       (solo una clase + el elemento). Con esa especificidad más baja, nuestra regla perdía
+       aunque apareciera después en la hoja de estilos — por eso seguía viéndose como una
+       caja blanca con borde en vez de solo texto. Se igualan aquí los mismos patrones de
+       selector (clase + atributo + elemento) para ganar siempre. */
     .st-key-vg_buscador_limpiar {{ display: inline-block; margin-top: 2px; }}
-    .st-key-vg_buscador_limpiar button,
-    .st-key-vg_buscador_limpiar button:hover,
-    .st-key-vg_buscador_limpiar button:focus,
-    .st-key-vg_buscador_limpiar button:active {{
+    .st-key-vg_buscador_limpiar .stButton button[kind="secondary"],
+    .st-key-vg_buscador_limpiar button[data-testid="stBaseButton-secondary"],
+    .st-key-vg_buscador_limpiar button[data-testid="baseButton-secondary"],
+    .st-key-vg_buscador_limpiar .stButton button[kind="secondary"]:hover,
+    .st-key-vg_buscador_limpiar button[data-testid="stBaseButton-secondary"]:hover,
+    .st-key-vg_buscador_limpiar .stButton button[kind="secondary"]:focus,
+    .st-key-vg_buscador_limpiar button[data-testid="stBaseButton-secondary"]:focus,
+    .st-key-vg_buscador_limpiar .stButton button[kind="secondary"]:active,
+    .st-key-vg_buscador_limpiar button[data-testid="stBaseButton-secondary"]:active {{
         background: transparent !important; border: none !important; box-shadow: none !important;
-        padding: 2px 0 !important; min-height: unset !important; width: auto !important;
+        border-radius: 0 !important; padding: 2px 0 !important; min-height: unset !important; width: auto !important;
     }}
-    .st-key-vg_buscador_limpiar button p {{
-        color: #9FC1E0 !important; font-size: 12px !important; text-decoration: underline; font-weight: 500 !important;
+    .st-key-vg_buscador_limpiar .stButton button[kind="secondary"] p,
+    .st-key-vg_buscador_limpiar button[data-testid="stBaseButton-secondary"] p,
+    .st-key-vg_buscador_limpiar button[data-testid="baseButton-secondary"] p {{
+        color: #9FC1E0 !important; font-size: 12px !important; font-weight: 500 !important;
+        text-decoration: underline !important;
     }}
-    .st-key-vg_buscador_limpiar button:hover p {{ color: #FFFFFF !important; }}
+    .st-key-vg_buscador_limpiar .stButton button[kind="secondary"]:hover p,
+    .st-key-vg_buscador_limpiar button[data-testid="stBaseButton-secondary"]:hover p {{
+        color: #FFFFFF !important;
+    }}
 
     /* En escritorio hay espacio de sobra a los lados, así que el hero puede ser más bajo y
        fino sin perder legibilidad — se aprieta el aire vertical (paddings/márgenes), no el
