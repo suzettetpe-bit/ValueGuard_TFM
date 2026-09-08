@@ -146,49 +146,121 @@ def calcular_cobertura_y_kpi(tabla_reparto, segmentos, coste_por_hogar=3.0):
 
     return tabla, pct_cartera_protegida, retorno_incremental_total, valor_protegido_total, excedente_presupuesto_total
 
-def construir_prompt(presupuesto_total, tabla_resultado, pct_cartera_protegida, retorno_incremental_total):
+def calcular_datos_interpretacion(presupuesto_total, tabla_resultado, pct_cartera_protegida,
+                                   pct_cartera_protegida_igual, retorno_incremental_total,
+                                   excedente_presupuesto_total):
+    """Toda la parte factual de la 'Interpretación IA' — titular, evidencia, implicación y
+    acción sugerida — se calcula aquí en Python puro, siempre, con o sin conexión a la IA.
+    Nunca depende del modelo: así la interpretación es igual de fiable si OpenAI falla, y la
+    IA (cuando está disponible) solo aporta la frase de 'por qué', nunca una cifra."""
+    segmento_principal = tabla_resultado.sort_values('presupuesto_asignado', ascending=False).iloc[0]
+    diferencia_pct = pct_cartera_protegida - pct_cartera_protegida_igual
+    hay_ventaja = diferencia_pct > 0.5
+    hay_excedente = excedente_presupuesto_total > 0.01
+    segmento_completo = int(segmento_principal['hogares_cubiertos']) == int(segmento_principal['n_hogares'])
+
+    if hay_ventaja:
+        titular = (
+            f"Priorizar por segmento protege {diferencia_pct:.1f} puntos porcentuales más de cartera "
+            f"que un reparto a partes iguales."
+        )
+    else:
+        titular = (
+            "A este nivel de presupuesto, priorizar por segmento ya no marca una diferencia relevante "
+            "frente a un reparto a partes iguales."
+        )
+
+    evidencia = [
+        {
+            "etiqueta": "Frente a un reparto equitativo",
+            "valor": f"{diferencia_pct:+.1f} pp" if hay_ventaja else "≈ igual",
+            "direccion": "up" if hay_ventaja else "flat",
+        },
+        {
+            "etiqueta": "Retorno incremental esperado",
+            "valor": f"{retorno_incremental_total:,.0f} €",
+            "direccion": "up",
+        },
+        {
+            "etiqueta": f"Hogares cubiertos · {segmento_principal['cuadrante']}",
+            "valor": f"{int(segmento_principal['hogares_cubiertos'])} / {int(segmento_principal['n_hogares'])}",
+            "direccion": "up" if segmento_completo else "flat",
+        },
+    ]
+
+    if hay_excedente:
+        significado = (
+            f"Con {presupuesto_total:,.0f}€ ya se cubre a todos los clientes que hacía falta cubrir, y quedan "
+            f"{excedente_presupuesto_total:,.0f}€ sin necesidad de gastar."
+        )
+        accion = "Revisar si el presupuesto es más alto de lo necesario, o si el coste de contacto por cliente puede bajar."
+    else:
+        significado = "Ningún segmento se queda sin el presupuesto que necesita para cubrir a sus clientes prioritarios."
+        accion = "Mantener este reparto: no hay presupuesto ocioso ni segmentos desatendidos."
+
+    return {
+        "titular": titular,
+        "evidencia": evidencia,
+        "significado": significado,
+        "accion": accion,
+        "segmento_principal": segmento_principal['cuadrante'],
+    }
+
+def construir_prompt_interpretacion(datos, tabla_resultado):
     resumen_segmentos = "\n".join(
         f"- {fila['cuadrante']}: {int(fila['hogares_cubiertos'])} hogares cubiertos de {int(fila['n_hogares'])}, "
         f"{fila['presupuesto_asignado']:.0f}€ asignados"
         for _, fila in tabla_resultado.iterrows()
     )
-    prompt = f"""Eres un asistente que explica en lenguaje claro y de negocio (no técnico) el resultado de un reparto de presupuesto de fidelización de clientes.
+    prompt = f"""Eres un asistente que explica en lenguaje claro y de negocio (no técnico) POR QUÉ tiene sentido un reparto de presupuesto de fidelización de clientes.
 
-Presupuesto total: {presupuesto_total:.0f}€
-% de cartera de valor futuro protegida: {pct_cartera_protegida:.2f}%
-Retorno incremental esperado: {retorno_incremental_total:.2f}€
+Conclusión ya calculada (no la repitas literalmente): {datos['titular']}
+Segmento con mayor inversión: {datos['segmento_principal']}
 
 Reparto por segmento:
 {resumen_segmentos}
 
-Redacta un párrafo breve (máximo 5 líneas) dirigido a un responsable de marketing, explicando qué significa este reparto y por qué tiene sentido, sin usar jerga técnica."""
+Redacta SOLO 2-3 frases explicando POR QUÉ priorizar por segmento consigue ese resultado — qué combinación de riesgo de pérdida de valor y tamaño económico hace que ese segmento concentre la inversión antes que otros. No repitas cifras que no se te han dado, no repitas la conclusión, no añadas una recomendación (eso ya se muestra aparte)."""
     return prompt
 
-def generar_explicacion_respaldo(presupuesto_total, tabla_resultado, pct_cartera_protegida, retorno_incremental_total):
-    segmento_principal = tabla_resultado.sort_values('presupuesto_asignado', ascending=False).iloc[0]
+def explicacion_interpretacion_respaldo(segmento_principal):
     return (
-        f"Con un presupuesto de {presupuesto_total:,.0f}€ se protege el {pct_cartera_protegida:.2f}% del valor futuro "
-        f"de la cartera de clientes, con un retorno incremental esperado de {retorno_incremental_total:,.2f}€. "
-        f"El segmento con mayor inversión es '{segmento_principal['cuadrante']}', "
-        f"cubriendo {int(segmento_principal['hogares_cubiertos'])} de {int(segmento_principal['n_hogares'])} hogares. "
-        f"El reparto prioriza primero los segmentos de mayor riesgo de pérdida de valor, y a valor igual, "
-        f"los de mayor tamaño económico."
+        f"El reparto prioriza primero los segmentos con mayor riesgo de pérdida de valor y, a igualdad de "
+        f"riesgo, los de mayor tamaño económico — por eso '{segmento_principal}' concentra la inversión antes "
+        f"que otros segmentos, aunque no sea necesariamente el más grande."
     )
 
-def generar_explicacion(presupuesto_total, tabla_resultado, pct_cartera_protegida, retorno_incremental_total):
-    prompt = construir_prompt(presupuesto_total, tabla_resultado, pct_cartera_protegida, retorno_incremental_total)
+def generar_interpretacion(presupuesto_total, tabla_resultado, pct_cartera_protegida, pct_cartera_protegida_igual,
+                            retorno_incremental_total, excedente_presupuesto_total):
+    datos = calcular_datos_interpretacion(
+        presupuesto_total, tabla_resultado, pct_cartera_protegida, pct_cartera_protegida_igual,
+        retorno_incremental_total, excedente_presupuesto_total,
+    )
+    prompt = construir_prompt_interpretacion(datos, tabla_resultado)
     try:
         from openai import OpenAI
-        client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        clave = os.getenv("OPENAI_API_KEY")
+        if not clave:
+            raise RuntimeError(
+                "OPENAI_API_KEY no está definida en el entorno (revisa los 'Secrets' de la app en Streamlit Cloud)."
+            )
+        client = OpenAI(api_key=clave)
         respuesta = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.5,
-            max_tokens=200,
+            max_tokens=140,
         )
-        return respuesta.choices[0].message.content, True
-    except Exception:
-        return generar_explicacion_respaldo(presupuesto_total, tabla_resultado, pct_cartera_protegida, retorno_incremental_total), False
+        datos['explicacion'] = respuesta.choices[0].message.content.strip()
+        return datos, True
+    except Exception as error:
+        # No se silencia del todo: queda impreso en los logs de la app (en Streamlit Cloud,
+        # "Manage app" -> el panel de logs), para poder diagnosticar sin adivinar. El resto de
+        # la interpretación (titular, evidencia, significado, acción) sigue siendo la misma
+        # calculada en Python — solo cambia esta frase de "por qué".
+        print(f"[ValueGuard] Fallo generando la interpretación con IA: {type(error).__name__}: {error}")
+        datos['explicacion'] = explicacion_interpretacion_respaldo(datos['segmento_principal'])
+        return datos, False
 
 def buscar_hogar(household_key, segmentos, tabla_cobertura):
     hogar = segmentos[segmentos['household_key'] == household_key]

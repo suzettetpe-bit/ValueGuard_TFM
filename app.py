@@ -1,3 +1,4 @@
+import time
 import streamlit as st
 import streamlit.components.v1 as components
 import plotly.express as px
@@ -26,6 +27,14 @@ COLOR_RIESGO = "#D97706"
 COLOR_NEUTRO = "#64748B"
 COLOR_BORDE = "#E2E8F0"
 COLOR_FONDO = "#F5F7FA"
+# Identidad exclusiva de la capa "Interpretación IA" (sección de Explicación/Interpretación):
+# un lenguaje de color que no se usa en ningún otro sitio de la app, para que "esto lo dice
+# la IA" se note sin depender de un icono de robot — navy/dorado siguen significando
+# "esto es el producto/los datos", el violeta significa "esto es interpretación".
+COLOR_IA = "#6D5EF0"
+COLOR_IA_OSCURO = "#4B3ED1"
+COLOR_IA_TINTE = "#F1EEFB"
+COLOR_IA_TINTE_2 = "#E7E1FC"
 
 HORIZONTES_SEMANAS = [13, 26, 52, 104]
 HORIZONTE_POR_DEFECTO = 52
@@ -38,7 +47,7 @@ ETIQUETAS_HORIZONTE = {
     104: "104 semanas (2 años)",
 }
 
-SECCIONES_BASE = ["Resultados", "Perfil de segmentos", "Clientes a contactar", "Explicación"]
+SECCIONES_BASE = ["Resultados", "Perfil de segmentos", "Clientes a contactar", "✨ Interpretación"]
 
 CLAVES_RESULTADO = [
     'tabla_resultado',
@@ -226,6 +235,41 @@ if 'vg_parametros_movil_abiertos' not in st.session_state:
 ESTILO_SIDEBAR_MOVIL_ABIERTA = (
     '[data-testid="stSidebar"] { transform: translateX(0) !important; visibility: visible !important; }'
     if st.session_state['vg_parametros_movil_abiertos'] else ''
+)
+
+# Misma técnica para la tarjeta expandible de "✨ Interpretación": el estado (abierta o no) se
+# decide en Python, pero hace falta leerlo ANTES de este bloque de estilos (donde vive el CSS
+# de expansión, más abajo) para poder inyectar la regla condicional que hace crecer la
+# tarjeta — de ahí que se inicialice aquí y no junto al resto de esa sección, más adelante en
+# el script.
+if 'vg_ia_abierta' not in st.session_state:
+    st.session_state['vg_ia_abierta'] = False
+
+ESTILO_IA_ABIERTA = (
+    """
+    /* Al abrirse, la tarjeta deja de ser "transparente + sin relleno" (estado de reposo, solo
+       botón) y pasa a pintarse como panel violeta con degradado — el mismo cambio de tamaño
+       (arriba, siempre activo) más este cambio de relleno es lo que hace que se lea como
+       "el botón se ha convertido en tarjeta", no como una tarjeta nueva apareciendo al lado. */
+    .st-key-vg_ia_card {
+        background: linear-gradient(135deg, __OSCURO__ 0%, __BASE__ 100%) !important;
+        box-shadow: 0 18px 40px rgba(76,62,209,0.28) !important;
+        padding: 22px 24px !important;
+    }
+    @media (min-width: 769px) {
+        .st-key-vg_ia_card { max-width: 620px !important; }
+    }
+    @media (max-width: 768px) {
+        .st-key-vg_ia_card {
+            left: 0 !important; right: 0 !important; bottom: 0 !important; top: auto !important;
+            width: 100% !important; max-width: none !important; height: auto !important;
+            max-height: 82vh !important; border-radius: 20px 20px 0 0 !important;
+            padding: 22px 22px 30px !important;
+        }
+        .vg-ia-velo { opacity: 1 !important; pointer-events: auto !important; }
+    }
+    """.replace('__OSCURO__', COLOR_IA_OSCURO).replace('__BASE__', COLOR_IA)
+    if st.session_state['vg_ia_abierta'] else ''
 )
 
 st.markdown(f"""
@@ -853,9 +897,128 @@ st.markdown(f"""
     .vg-resultado-texto {{ font-size: 13px; color: {COLOR_TEXTO_SECUNDARIO}; line-height: 1.6; margin-top: 14px; }}
     .vg-resultado-texto strong {{ color: {COLOR_TEXTO_PRINCIPAL}; }}
 
+    /* Capa "✨ Interpretación": expanding insight card — no un botón suelto ni un modal, sino
+       el propio disparador convirtiéndose en tarjeta. `st.container(key="vg_ia_card")` es el
+       ÚNICO nodo persistente: en reposo solo contiene la píldora violeta "✨ Explicar con IA";
+       al pulsarla, Python decide (vía ESTILO_IA_ABIERTA, más arriba en el script) que el mismo
+       contenedor pase a ocupar más espacio, y ese cambio de tamaño se anima con una transición
+       CSS normal — Streamlit reconcilia el DOM en el sitio (mismo patrón ya probado para la
+       barra lateral móvil, sección 21), así que el "crecimiento" se ve fluido aunque lo
+       dispare un st.rerun() y no JavaScript (Streamlit sanea el HTML insertado con
+       st.markdown y elimina los atributos "onclick", así que un toggle en CSS puro con
+       <input type="checkbox"> tampoco es fiable aquí — de ahí seguir con st.button +
+       session_state, el único mecanismo de interacción que ha funcionado de forma consistente
+       en esta app). En escritorio la tarjeta crece en anchura, en el mismo sitio (sin overlay,
+       sin fondo oscurecido — nunca un modal); en móvil el mismo nodo pasa de "botón flotante"
+       a "hoja inferior" fija, con velo detrás. */
+    .st-key-vg_ia_card {{
+        position: relative; overflow: hidden; border-radius: 18px;
+        transition: max-width .32s cubic-bezier(.22,.9,.32,1), width .32s cubic-bezier(.22,.9,.32,1),
+                    padding .32s cubic-bezier(.22,.9,.32,1), background .32s ease, box-shadow .32s ease,
+                    bottom .32s cubic-bezier(.22,.9,.32,1), right .32s cubic-bezier(.22,.9,.32,1),
+                    border-radius .32s ease;
+        background: transparent; box-shadow: none; padding: 0;
+    }}
+    @media (min-width: 769px) {{
+        .st-key-vg_ia_card {{ max-width: 250px; }}
+    }}
+    @media (max-width: 768px) {{
+        .st-key-vg_ia_card {{
+            position: fixed; z-index: 1000; left: auto; top: auto;
+            right: 18px; bottom: 22px; width: auto; max-width: 200px;
+        }}
+    }}
+    {ESTILO_IA_ABIERTA}
+
+    /* Disparador: st.button nativo con key="vg_ia_trigger_btn" (Streamlit añade la clase
+       st-key-vg_ia_trigger_btn al propio botón). Relleno violeta sólido para que destaque de
+       inmediato frente a cualquier otro control de la app, con los tres estados de foco que
+       pide un componente accesible: hover, focus visible (teclado) y active (pulsado). */
+    .st-key-vg_ia_trigger_btn button {{
+        background: {COLOR_IA}; border: none !important;
+        border-radius: 999px !important; padding: 12px 22px !important;
+        box-shadow: 0 4px 14px rgba(76,62,209,0.32) !important;
+        transition: background .2s ease, box-shadow .2s ease, transform .15s ease !important;
+    }}
+    .st-key-vg_ia_trigger_btn button p {{
+        color: #FFFFFF !important; font-weight: 700 !important; font-size: 13.5px !important;
+        white-space: nowrap !important;
+    }}
+    .st-key-vg_ia_trigger_btn button:hover {{
+        background: {COLOR_IA_OSCURO} !important; box-shadow: 0 0 0 5px rgba(109,94,240,0.22) !important;
+    }}
+    .st-key-vg_ia_trigger_btn button:focus-visible {{
+        outline: 2px solid #FFFFFF !important; outline-offset: 2px !important;
+        box-shadow: 0 0 0 5px rgba(109,94,240,0.38) !important;
+    }}
+    .st-key-vg_ia_trigger_btn button:active {{ transform: scale(0.96) !important; }}
+
+    /* Contenido de la tarjeta abierta (kicker, titular, texto, fuente): entra con un fundido +
+       desplazamiento muy sutil, ligeramente retrasado respecto al crecimiento del contenedor,
+       para que se lea como "revelado" y no como un parpadeo. */
+    .vg-ia-contenido {{ animation: vg-ia-aparece .3s cubic-bezier(.22,.9,.32,1) .08s both; }}
+    @keyframes vg-ia-aparece {{
+        from {{ opacity: 0; transform: translateY(6px); }}
+        to   {{ opacity: 1; transform: translateY(0); }}
+    }}
+    .vg-ia-kicker {{
+        display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: 0.08em;
+        text-transform: uppercase; color: #FFFFFF; background: rgba(255,255,255,0.16);
+        padding: 4px 11px; border-radius: 999px; margin-bottom: 12px;
+    }}
+    .vg-ia-titular {{ font-size: 17px; font-weight: 700; color: #FFFFFF; line-height: 1.35; margin-bottom: 10px; }}
+    .vg-ia-texto {{ font-size: 13.5px; color: #EDE9FC; line-height: 1.6; }}
+    .vg-ia-texto strong {{ color: #FFFFFF; }}
+    .vg-ia-fuente {{ font-size: 12px; color: #C9BEF2; margin-top: 10px; }}
+
+    /* Estado "analizando": un halo blanco que late, no un espiner genérico ni un "escribiendo…"
+       de chat — sigue siendo una tarjeta de datos, no una conversación. */
+    .vg-ia-analizando {{ display: flex; align-items: center; gap: 10px; padding: 2px 0; }}
+    .vg-ia-halo {{
+        width: 12px; height: 12px; border-radius: 50%; background: #FFFFFF; flex: 0 0 auto;
+        animation: vg-ia-pulso 1.1s ease-in-out infinite;
+    }}
+    @keyframes vg-ia-pulso {{
+        0%, 100% {{ transform: scale(0.85); opacity: 0.5; }}
+        50% {{ transform: scale(1.15); opacity: 1; }}
+    }}
+    .vg-ia-analizando-texto {{ font-size: 13.5px; font-weight: 600; color: #FFFFFF; }}
+
+    /* Cierre: "✕" circular en la esquina de la tarjeta abierta, no un enlace de texto — así
+       lee como el cierre de una tarjeta/panel, no como una acción secundaria de formulario. */
+    .st-key-vg_ia_cerrar {{ position: absolute; top: 14px; right: 14px; z-index: 2; }}
+    .st-key-vg_ia_cerrar button {{
+        background: rgba(255,255,255,0.16) !important; border: none !important; border-radius: 50% !important;
+        width: 28px !important; height: 28px !important; padding: 0 !important; min-height: unset !important;
+        display: flex !important; align-items: center !important; justify-content: center !important;
+        transition: background .2s ease !important;
+    }}
+    .st-key-vg_ia_cerrar button p {{ color: #FFFFFF !important; font-size: 14px !important; font-weight: 700 !important; }}
+    .st-key-vg_ia_cerrar button:hover {{ background: rgba(255,255,255,0.32) !important; }}
+    .st-key-vg_ia_cerrar button:focus-visible {{ outline: 2px solid #FFFFFF !important; outline-offset: 2px !important; }}
+
+    /* Manija decorativa de la hoja inferior (solo móvil, solo con la tarjeta abierta) y velo
+       semitransparente detrás — mismo recurso ya usado y corregido para el panel de
+       parámetros móvil (sección 21): un <div> normal, nunca un st.button, para que el color
+       de fondo no dependa de anular los estilos por defecto de un botón de Streamlit. */
+    .vg-ia-manija {{ display: none; }}
+    .vg-ia-velo {{
+        position: fixed; inset: 0; z-index: 999; background: rgba(15,23,42,0.45);
+        opacity: 0; pointer-events: none; transition: opacity .32s ease;
+    }}
+    @media (max-width: 768px) {{
+        .vg-ia-manija {{ display: block; width: 36px; height: 4px; border-radius: 999px; background: rgba(255,255,255,0.4); margin: 0 auto 14px; }}
+    }}
+    @media (min-width: 769px) {{
+        .vg-ia-velo {{ display: none; }}
+    }}
+
     @media (prefers-reduced-motion: reduce) {{
         .vg-hero-red {{ animation: none; }}
         .vg-tarjeta {{ transition: none; }}
+        .vg-ia-halo {{ animation: none; }}
+        .st-key-vg_ia_card {{ transition: none; }}
+        .vg-ia-contenido {{ animation: none; }}
     }}
 </style>
 """, unsafe_allow_html=True)
@@ -1410,6 +1573,7 @@ if calcular:
     st.session_state['excedente_presupuesto_total'] = excedente_presupuesto_total
     st.session_state.pop('cliente_buscado', None)
     st.session_state['seccion'] = "Resultados"  # por si la pestaña activa era la de un cliente que ya no existe
+    st.session_state['vg_ia_abierta'] = False  # una interpretación abierta hablaba del reparto anterior
     if st.session_state['vg_parametros_movil_abiertos']:
         # El CSS que abre/cierra el panel en móvil se calcula al principio del script, antes
         # de llegar aquí — así que sin un rerun, esta misma ejecución seguiría mostrando el
@@ -1772,18 +1936,65 @@ else:
             csv = hogares_a_invertir.rename(columns=NOMBRES_COLUMNAS_HOGARES).to_csv(index=False).encode('utf-8')
             st.download_button("Descargar lista (CSV)", csv, f"clientes_{cuadrante_elegido}.csv", "text/csv")
 
-        elif seccion == "Explicación":
-            with st.spinner("Generando la explicación con IA…"):
-                explicacion, es_ia = backend.generar_explicacion(
-                    st.session_state['presupuesto'], st.session_state['tabla_resultado'], pct_cartera_protegida, retorno_incremental_total
-                )
-            etiqueta_fuente = "" if es_ia else f"<div style='font-size:12px; color:{COLOR_TEXTO_TERCIARIO}; margin-top:12px;'>Generado con plantilla</div>"
-            st.markdown(f"""
-            <div class="vg-ficha" style="line-height:1.7;">
-                {explicacion}
-                {etiqueta_fuente}
-            </div>
-            """, unsafe_allow_html=True)
+        elif seccion == "✨ Interpretación":
+            if 'vg_ia_abierta' not in st.session_state:
+                st.session_state['vg_ia_abierta'] = False
+
+            # Velo (solo visible en móvil, vía CSS): un <div> normal, nunca un st.button —
+            # un botón aquí competiría con el estilo nativo de Streamlit y además "robaría"
+            # el foco/tabulación sin aportar ninguna acción real (ver sección 21 del historial).
+            st.markdown('<div class="vg-ia-velo"></div>', unsafe_allow_html=True)
+
+            with st.container(key="vg_ia_card"):
+                if not st.session_state['vg_ia_abierta']:
+                    # Estado de reposo: solo la píldora violeta, sin titular ni subtítulo — el
+                    # propio botón destacado ES el disparador, sin nada alrededor que lo diluya.
+                    if st.button("✨ Explicar con IA", key="vg_ia_trigger_btn"):
+                        st.session_state['vg_ia_abierta'] = True
+                        st.rerun()
+                else:
+                    st.markdown('<div class="vg-ia-manija"></div>', unsafe_allow_html=True)
+                    with st.container(key="vg_ia_cerrar"):
+                        if st.button("✕", key="vg_ia_cerrar_btn", help="Cerrar"):
+                            st.session_state['vg_ia_abierta'] = False
+                            st.rerun()
+
+                    marcador_ia = st.empty()
+                    marcador_ia.markdown("""
+                    <div class="vg-ia-contenido">
+                        <div class="vg-ia-kicker">✨ INTERPRETACIÓN IA</div>
+                        <div class="vg-ia-analizando">
+                            <span class="vg-ia-halo"></span>
+                            <span class="vg-ia-analizando-texto">Analizando el reparto de presupuesto…</span>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    # Pausa breve deliberada: cuando la respuesta llega del respaldo (sin IA), el
+                    # cálculo es tan instantáneo que el halo no llegaría a verse — y el usuario debe
+                    # notar que "algo se ha analizado", aunque haya sido en Python puro.
+                    time.sleep(0.4)
+
+                    datos_ia, es_ia = backend.generar_interpretacion(
+                        st.session_state['presupuesto'], st.session_state['tabla_resultado'], pct_cartera_protegida,
+                        pct_igual, retorno_incremental_total, excedente_presupuesto_total
+                    )
+                    marcador_ia.empty()
+
+                    # Un único bloque de texto, sin desglosar en tarjetas de evidencia ni
+                    # desplegables: el "por qué" de la IA, el "qué significa" y la acción
+                    # sugerida se funden en un solo párrafo — la conclusión breve que pide el
+                    # diseño de tarjeta expandible, no un informe.
+                    texto_ia = f"{datos_ia['explicacion']} {datos_ia['significado']} {datos_ia['accion']}"
+                    etiqueta_fuente = "" if es_ia else "<div class='vg-ia-fuente'>Generado con plantilla (sin conexión a la IA)</div>"
+
+                    st.markdown(f"""
+                    <div class="vg-ia-contenido">
+                        <div class="vg-ia-kicker">✨ INTERPRETACIÓN IA</div>
+                        <div class="vg-ia-titular">{datos_ia['titular']}</div>
+                        <div class="vg-ia-texto">{texto_ia}</div>
+                        {etiqueta_fuente}
+                    </div>
+                    """, unsafe_allow_html=True)
 
         elif etiqueta_tab_cliente and seccion == etiqueta_tab_cliente:
             resultado_cliente_buscador(datos_cliente_tab, coste_usado)
