@@ -690,23 +690,50 @@ st.markdown(f"""
     .st-key-vg_buscador_hero::after {{
         content: ""; position: absolute; top: -50%; right: -10%; width: 55%; height: 180%;
         background: radial-gradient(circle, rgba(253,201,0,0.14) 0%, rgba(253,201,0,0) 60%);
-        pointer-events: none;
+        pointer-events: none; z-index: 0;
     }}
-    .vg-buscador-hero-titulo {{ position: relative; font-size: 19px; font-weight: 700; color: #FFFFFF; margin-top: 2px; }}
+    .vg-buscador-hero-titulo {{ position: relative; z-index: 1; font-size: 19px; font-weight: 700; color: #FFFFFF; margin-top: 2px; }}
     .vg-buscador-hero-sub {{
-        position: relative; font-size: 13px; color: #C7DCF0; margin: 6px auto 0; max-width: 460px; line-height: 1.5;
+        position: relative; z-index: 1; font-size: 13px; color: #C7DCF0; margin: 6px auto 0; max-width: 460px; line-height: 1.5;
     }}
+    /* El resplandor dorado (::after, arriba) es un pseudo-elemento y, aunque va declarado antes
+       en el CSS, en el DOM se pinta como si fuera el ÚLTIMO hijo del hero — por delante de la
+       píldora blanca y del botón "Buscar" salvo que se fije su orden de pila explícitamente.
+       En escritorio la píldora es estrecha y queda fuera del área del resplandor, así que no se
+       notaba; en móvil la píldora ocupa casi todo el ancho del hero y el resplandor la atraviesa,
+       viéndose como una mancha crema/dorada sobre el blanco. Con z-index explícito la píldora
+       (y el botón "Buscar" dentro de ella) queda siempre por delante del resplandor. */
     .st-key-vg_buscador_pill {{
-        position: relative; max-width: 560px; margin: 20px auto 0;
+        position: relative; z-index: 1; max-width: 560px; margin: 20px auto 0;
         background: #FFFFFF; border-radius: 999px; padding: 6px 8px 6px 22px;
         box-shadow: 0 10px 26px rgba(0,10,30,0.24);
         display: flex; align-items: center;
     }}
     .st-key-vg_buscador_pill [data-testid="stForm"] {{ border: none !important; padding: 0 !important; background: transparent !important; width: 100%; }}
-    .st-key-vg_buscador_pill [data-testid="stNumberInput"] div[data-baseweb="input"] {{
+    /* El número de cliente es un input nativo, y en Chrome Android el navegador le pinta un
+       fondo amarillo/crema propio (el resaltado de autocompletar) que no tiene nada que ver
+       con los colores de la app — por eso no aparecía ni en el canvas de diseño ni en
+       escritorio, solo en el móvil real. Se neutraliza forzando el fondo blanco del propio
+       input mediante el truco del box-shadow inset, y de paso se cubre TODO el árbol del
+       widget (el contenedor, el wrapper baseweb y los botones +/- nativos) en transparente,
+       no solo el div interior, para que no quede ningún nivel con fondo por defecto. */
+    .st-key-vg_buscador_pill [data-testid="stNumberInput"],
+    .st-key-vg_buscador_pill [data-testid="stNumberInput"] > div,
+    .st-key-vg_buscador_pill [data-testid="stNumberInput"] div[data-baseweb="input"],
+    .st-key-vg_buscador_pill [data-testid="stNumberInput"] button {{
         border: none !important; background: transparent !important; box-shadow: none !important;
     }}
-    .st-key-vg_buscador_pill [data-testid="stNumberInput"] input {{ font-size: 15px !important; }}
+    .st-key-vg_buscador_pill [data-testid="stNumberInput"] input {{
+        font-size: 15px !important; background: #FFFFFF !important; box-shadow: none !important;
+    }}
+    .st-key-vg_buscador_pill [data-testid="stNumberInput"] input:-webkit-autofill,
+    .st-key-vg_buscador_pill [data-testid="stNumberInput"] input:-webkit-autofill:hover,
+    .st-key-vg_buscador_pill [data-testid="stNumberInput"] input:-webkit-autofill:focus {{
+        -webkit-text-fill-color: {COLOR_TEXTO_PRINCIPAL} !important;
+        -webkit-box-shadow: 0 0 0 1000px #FFFFFF inset !important;
+        box-shadow: 0 0 0 1000px #FFFFFF inset !important;
+        transition: background-color 0s ease-in-out 100000s;
+    }}
     .st-key-vg_buscador_pill [data-testid="stFormSubmitButton"] button {{
         border-radius: 999px !important; background: {COLOR_NAVY_MARCA} !important;
         border: none !important; padding: 10px 22px !important;
@@ -715,7 +742,7 @@ st.markdown(f"""
         color: #FFFFFF !important; font-weight: 700 !important;
     }}
     .st-key-vg_buscador_pill [data-testid="stFormSubmitButton"] button:hover {{ background: {COLOR_AZUL} !important; }}
-    .vg-buscador-nota {{ position: relative; font-size: 12px; color: #C7DCF0; margin-top: 10px; }}
+    .vg-buscador-nota {{ position: relative; z-index: 1; font-size: 12px; color: #C7DCF0; margin-top: 10px; }}
     /* "Limpiar búsqueda": solo texto subrayado, sin caja de botón en ningún estado (ni en
        hover/focus, donde el estilo "secondary" de más arriba le pondría fondo azul claro
        por defecto) — deliberadamente el elemento con menos peso visual de todo el hero. */
