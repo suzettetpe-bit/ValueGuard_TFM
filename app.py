@@ -255,7 +255,13 @@ ESTILO_IA_ABIERTA = (
     @media (max-width: 768px) {
         .st-key-vg_ia_panel { transform: translateY(0) !important; }
     }
-    .vg-ia-velo { opacity: 1 !important; pointer-events: auto !important; }
+    /* El velo se ve, pero nunca intercepta clics: en Streamlit no se le puede enganchar un
+       "clic fuera para cerrar" (los atributos onclick del HTML insertado se sanean), así que
+       si capturara clics (pointer-events: auto) bloquearía el resto de la página sin dar
+       ninguna forma de cerrar desde ahí — el bug real de "la app se queda congelada" al abrir
+       el panel. Solo se cierra con el botón "✕". Misma lección ya aplicada al panel de
+       parámetros móvil (sección 21). */
+    .vg-ia-velo { opacity: 1 !important; }
     """
     if st.session_state['vg_ia_abierta'] else ''
 )
