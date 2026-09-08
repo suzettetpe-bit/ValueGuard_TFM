@@ -38,7 +38,7 @@ ETIQUETAS_HORIZONTE = {
     104: "104 semanas (2 años)",
 }
 
-SECCIONES = ["Resultados", "Clientes a contactar", "Explicación", "Consulta por cliente"]
+SECCIONES_BASE = ["Resultados", "Perfil de segmentos", "Clientes a contactar", "Explicación"]
 
 CLAVES_RESULTADO = [
     'tabla_resultado',
@@ -168,8 +168,43 @@ HTML_RED_FONDO = f"""
     if (!reduceMotion) requestAnimationFrame(paso);
   }}
 
+  // Pequeño "clic" audible al tocar cualquier botón de la app (Calcular reparto, Buscar,
+  // las pestañas, etc.). Se genera con la Web Audio API (un tono corto, sin fichero de
+  // audio que cargar) y se escucha en window.parent porque los botones reales están en la
+  // página de Streamlit, no dentro de este iframe — mismo motivo por el que el parallax del
+  // ratón (más arriba) también escucha ahí.
+  var contextoAudio = null;
+  function sonidoClic() {{
+    try {{
+      var Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return;
+      if (!contextoAudio) contextoAudio = new Ctx();
+      if (contextoAudio.state === 'suspended') {{ contextoAudio.resume(); }}
+      var osc = contextoAudio.createOscillator();
+      var ganancia = contextoAudio.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(880, contextoAudio.currentTime);
+      ganancia.gain.setValueAtTime(0.09, contextoAudio.currentTime);
+      ganancia.gain.exponentialRampToValueAtTime(0.001, contextoAudio.currentTime + 0.09);
+      osc.connect(ganancia).connect(contextoAudio.destination);
+      osc.start();
+      osc.stop(contextoAudio.currentTime + 0.1);
+    }} catch (err) {{}}
+  }}
+  function escucharClics() {{
+    var manejador = function (e) {{
+      var boton = e.target && e.target.closest ? e.target.closest('button, [role="button"]') : null;
+      if (boton) sonidoClic();
+    }};
+    try {{
+      window.parent.document.addEventListener('pointerdown', manejador, {{ passive: true, capture: true }});
+    }} catch (err) {{
+      document.addEventListener('pointerdown', manejador, {{ passive: true, capture: true }});
+    }}
+  }}
+
   window.addEventListener('resize', resize);
-  resize(); crearNodos(); escucharRaton(); paso();
+  resize(); crearNodos(); escucharRaton(); escucharClics(); paso();
 }})();
 </script>
 </body></html>
@@ -343,22 +378,28 @@ st.markdown(f"""
     }}
 
     /* Botón "Inicio": única acción secundaria de la barra lateral (la otra es "Calcular
-       reparto", type="primary") — se le da un estilo tipo "ghost", más ligero. */
+       reparto", type="primary"). Antes era un botón "ghost" (borde fino + fondo
+       transparente) que se veía plano; ahora es una píldora rellena de gris claro, a todo
+       el ancho como "Calcular reparto", con una sombra suave al pasar el ratón. */
     [data-testid="stSidebar"] button[kind="secondary"],
     [data-testid="stSidebar"] button[data-testid="stBaseButton-secondary"] {{
-        background-color: transparent !important;
-        border: 1px solid {COLOR_NAVY_MARCA} !important;
-        padding: 4px 14px !important;
+        background-color: {COLOR_FONDO} !important;
+        border: 1px solid transparent !important;
+        border-radius: 999px !important;
+        padding: 9px 16px !important;
+        box-shadow: none !important;
+        transition: background-color 150ms ease, box-shadow 150ms ease;
     }}
     [data-testid="stSidebar"] button[kind="secondary"] p,
     [data-testid="stSidebar"] button[data-testid="stBaseButton-secondary"] p {{
         color: {COLOR_NAVY_MARCA} !important;
-        font-size: 13px !important;
+        font-size: 13.5px !important;
+        font-weight: 600 !important;
     }}
     [data-testid="stSidebar"] button[kind="secondary"]:hover,
     [data-testid="stSidebar"] button[data-testid="stBaseButton-secondary"]:hover {{
         background-color: {COLOR_AZUL_TINTE} !important;
-        border-color: {COLOR_NAVY_MARCA} !important;
+        box-shadow: 0 2px 8px rgba(0,37,74,0.12);
     }}
 
     /* Inputs de la barra lateral: borde y foco en navy de marca */
@@ -445,53 +486,68 @@ st.markdown(f"""
         background-color: {COLOR_AZUL_TINTE} !important;
     }}
 
+    /* Pestañas de "Sección" como control segmentado (píldoras sobre una pista gris), no
+       como texto con un subrayado — la versión anterior (solo borde inferior al elegir) se
+       leía como texto, no como algo pulsable. Aquí cada opción tiene su propio fondo y la
+       activa queda "elevada" en blanco con sombra, igual que un selector de pestañas nativo
+       de iOS/Notion — inequívocamente clicable. */
     [data-testid="stRadio"] > div[role="radiogroup"] {{
         display: flex;
         flex-direction: row;
-        gap: 28px;
-        border-bottom: 1px solid {COLOR_BORDE};
+        flex-wrap: wrap;
+        gap: 4px;
+        background: #EAEEF3;
+        padding: 5px;
+        border-radius: 12px;
+        width: fit-content;
+        max-width: 100%;
         margin-bottom: 4px;
     }}
     [data-testid="stRadio"] div[role="radiogroup"] > label {{
         margin: 0 !important;
-        padding: 10px 2px !important;
-        border-bottom: 2px solid transparent;
+        padding: 9px 16px !important;
+        border-radius: 9px;
         cursor: pointer;
         background: transparent !important;
+        transition: background 150ms ease, box-shadow 150ms ease;
     }}
     [data-testid="stRadio"] div[role="radiogroup"] label div:empty,
     [data-testid="stRadio"] div[role="radiogroup"] label div:has(> div:empty:only-child) {{ display: none !important; }}
     [data-testid="stRadio"] div[role="radiogroup"] > label p {{
-        font-size: 14px !important;
-        font-weight: 500 !important;
+        font-size: 13.5px !important;
+        font-weight: 600 !important;
         color: {COLOR_TEXTO_TERCIARIO} !important;
         white-space: nowrap;
     }}
-    [data-testid="stRadio"] div[role="radiogroup"] > label:hover p {{ color: {COLOR_TEXTO_SECUNDARIO} !important; }}
+    [data-testid="stRadio"] div[role="radiogroup"] > label:hover {{ background: #DEE4EC !important; }}
     [data-testid="stRadio"] div[role="radiogroup"] > label:has(input:checked),
     [data-testid="stRadio"] div[role="radiogroup"] > label[data-selected="true"],
-    [data-testid="stRadio"] div[role="radiogroup"] > label[aria-checked="true"] {{ border-bottom-color: {COLOR_AZUL}; }}
+    [data-testid="stRadio"] div[role="radiogroup"] > label[aria-checked="true"] {{
+        background: #FFFFFF !important;
+        box-shadow: 0 1px 5px rgba(0,37,74,0.16);
+    }}
+    [data-testid="stRadio"] div[role="radiogroup"] > label:has(input:checked):hover,
+    [data-testid="stRadio"] div[role="radiogroup"] > label[data-selected="true"]:hover,
+    [data-testid="stRadio"] div[role="radiogroup"] > label[aria-checked="true"]:hover {{ background: #FFFFFF !important; }}
     [data-testid="stRadio"] div[role="radiogroup"] > label:has(input:checked) p,
     [data-testid="stRadio"] div[role="radiogroup"] > label[data-selected="true"] p,
     [data-testid="stRadio"] div[role="radiogroup"] > label[aria-checked="true"] p {{
-        color: {COLOR_TEXTO_PRINCIPAL} !important;
-        font-weight: 600 !important;
+        color: {COLOR_NAVY_MARCA} !important;
+        font-weight: 700 !important;
     }}
 
     /* Fondo sólido para las pestañas de "Sección" y todo el contenido de resultados que va
        debajo: sin esto, el patrón animado de fondo se transparenta entre los huecos de las
        tarjetas/tablas, sobre todo en móvil (donde las columnas se apilan y hay más huecos
-       visibles). Se aplica al contenedor de la pestaña y a todos sus hermanos siguientes
-       dentro del mismo bloque (el resto del contenido de "Resultados"/"Clientes a
-       contactar"/etc.), para que ninguno deje ver el fondo detrás. */
-    div[data-testid="stElementContainer"]:has([data-testid="stRadio"]),
-    div[data-testid="stElementContainer"]:has([data-testid="stRadio"]) ~ div[data-testid="stElementContainer"],
-    div[data-testid="stElementContainer"]:has([data-testid="stRadio"]) ~ div[data-testid="stHorizontalBlock"] {{
+       visibles y se perdía el contraste con el texto). Va sobre un contenedor real de
+       Streamlit (key="vg_panel_resultados", clase st-key-vg_panel_resultados) en vez de un
+       selector CSS que intente "adivinar" los hermanos de la pestaña — la primera versión
+       usaba :has() para eso y no se aplicaba de forma fiable en todos los navegadores.
+       Aquí no hace falta preocuparse por soporte de :has(), es una clase normal. */
+    .st-key-vg_panel_resultados {{
         background: {COLOR_FONDO};
-    }}
-    div[data-testid="stElementContainer"]:has([data-testid="stRadio"]) {{
-        padding-top: 10px;
-        border-radius: 12px 12px 0 0;
+        padding: 10px 14px 4px 14px;
+        border-radius: 12px;
     }}
 
     .vg-tarjeta {{
@@ -561,8 +617,175 @@ st.markdown(f"""
         background: #FFFFFF; border: 1px solid {COLOR_BORDE}; border-top: 3px solid {COLOR_AMARILLO}; border-radius: 12px; padding: 24px;
         box-shadow: 0 4px 14px rgba(0,37,74,0.08);
     }}
+
+    /* Módulo de "insight" (pestaña Perfil de segmentos): deliberadamente distinto de
+       .vg-tarjeta/.vg-ficha — fondo crema y borde dorado completo (no solo arriba), para
+       que se lea como un bloque editorial aparte, no como otra tarjeta de resultado más.
+       Dentro no hay ningún gráfico de Plotly: son tarjetas comparativas (cifras grandes) y
+       un pictograma (iconos repetidos), a propósito una forma visual distinta de la que ya
+       usa "Resultados" — no el mismo gráfico de barras en una caja de otro color. */
+    .st-key-vg_insight_perfil {{
+        background: #FFFBF0; border: 1.5px solid {COLOR_AMARILLO}; border-radius: 18px;
+        padding: 22px 24px 18px 24px; margin-bottom: 18px;
+    }}
+    .vg-insight-kicker {{
+        display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+        color: {COLOR_NAVY_PROFUNDO}; background: {COLOR_AMARILLO}; padding: 4px 11px; border-radius: 999px;
+        margin-bottom: 10px;
+    }}
+    .vg-insight-titulo {{ font-size: 20px; font-weight: 700; color: {COLOR_NAVY_MARCA}; line-height: 1.3; margin-bottom: 6px; }}
+    .vg-insight-texto {{ font-size: 14px; color: {COLOR_TEXTO_SECUNDARIO}; line-height: 1.65; margin-bottom: 14px; }}
+    .vg-insight-texto strong {{ color: {COLOR_TEXTO_PRINCIPAL}; }}
+    .vg-insight-subtitulo {{
+        font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+        color: {COLOR_NAVY_MARCA}; margin: 18px 0 10px 0;
+    }}
     .vg-dato {{ font-size: 12px; font-weight: 500; color: {COLOR_TEXTO_TERCIARIO}; }}
     .vg-dato-valor {{ font-size: 20px; font-weight: 700; color: {COLOR_TEXTO_PRINCIPAL}; margin-top: 2px; }}
+
+    /* Tarjetas comparativas "alto valor vs. bajo valor" (Perfil de segmentos): cifra grande
+       a cada lado, sin ejes ni barras — el punto es leer los dos números casi de un vistazo
+       y ver que son parecidos. */
+    .vg-comparativa-tarjeta {{
+        background: #FFFFFF; border: 1px solid #F0E4C0; border-radius: 12px;
+        padding: 14px 16px 12px 16px; height: 100%;
+    }}
+    .vg-comparativa-etiqueta {{
+        font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em;
+        color: {COLOR_TEXTO_TERCIARIO}; margin-bottom: 12px;
+    }}
+    .vg-comparativa-fila {{ display: flex; justify-content: space-between; align-items: flex-end; gap: 8px; }}
+    .vg-comparativa-grupo {{ font-size: 11px; color: {COLOR_TEXTO_TERCIARIO}; margin-bottom: 2px; }}
+    .vg-comparativa-valor {{ font-size: 19px; font-weight: 700; color: {COLOR_TEXTO_PRINCIPAL}; font-variant-numeric: tabular-nums; }}
+    .vg-comparativa-delta {{ font-size: 12px; font-weight: 600; margin-top: 10px; text-align: center; }}
+
+    /* Pictograma de campañas recibidas: icono repetido en vez de una barra — la brecha
+       entre segmentos se lee contando puntos, no comparando longitudes de eje. */
+    .vg-pictograma-fila {{
+        display: flex; align-items: center; flex-wrap: wrap; gap: 12px;
+        padding: 10px 2px; border-bottom: 1px solid #F0E4C0;
+    }}
+    .vg-pictograma-fila:last-child {{ border-bottom: none; }}
+    .vg-pictograma-etiqueta {{
+        flex: 0 0 150px; font-size: 13px; font-weight: 600; color: {COLOR_TEXTO_PRINCIPAL};
+    }}
+    .vg-pictograma-iconos {{ display: flex; flex-wrap: wrap; gap: 4px; flex: 0 0 auto; }}
+    .vg-pictograma-icono {{ width: 13px; height: 13px; border-radius: 50%; display: inline-block; }}
+    .vg-pictograma-cifra {{ font-size: 12.5px; color: {COLOR_TEXTO_SECUNDARIO}; }}
+
+    /* "Buscar cliente" como Search Hero: una banda propia con la misma identidad que el
+       hero de Inicio (degradado navy, resplandor sutil) pero SIN la red de puntos — para que
+       se note que es el mismo lenguaje visual sin ser literalmente el mismo componente — de
+       forma que el buscador sea inequívocamente el elemento protagonista de "Resultados",
+       por delante incluso de las pestañas de Sección que van debajo. Sustituye al antiguo
+       botón + drawer lateral: aquí la búsqueda está siempre visible, no hay que abrir nada. */
+    .st-key-vg_buscador_hero {{
+        position: relative; overflow: hidden; border-radius: 18px;
+        padding: 30px 32px 34px;
+        background: linear-gradient(120deg, {COLOR_NAVY_PROFUNDO} 0%, {COLOR_NAVY_MARCA} 46%, #04437A 100%);
+        box-shadow: 0 14px 34px rgba(0,37,74,0.26);
+        margin-bottom: 4px;
+        text-align: center;
+    }}
+    .st-key-vg_buscador_hero::after {{
+        content: ""; position: absolute; top: -50%; right: -10%; width: 55%; height: 180%;
+        background: radial-gradient(circle, rgba(253,201,0,0.14) 0%, rgba(253,201,0,0) 60%);
+        pointer-events: none;
+    }}
+    .vg-buscador-hero-titulo {{ position: relative; font-size: 19px; font-weight: 700; color: #FFFFFF; margin-top: 2px; }}
+    .vg-buscador-hero-sub {{
+        position: relative; font-size: 13px; color: #C7DCF0; margin: 6px auto 0; max-width: 460px; line-height: 1.5;
+    }}
+    .st-key-vg_buscador_pill {{
+        position: relative; max-width: 560px; margin: 20px auto 0;
+        background: #FFFFFF; border-radius: 999px; padding: 6px 8px 6px 22px;
+        box-shadow: 0 10px 26px rgba(0,10,30,0.24);
+        display: flex; align-items: center;
+    }}
+    .st-key-vg_buscador_pill [data-testid="stForm"] {{ border: none !important; padding: 0 !important; background: transparent !important; width: 100%; }}
+    .st-key-vg_buscador_pill [data-testid="stNumberInput"] div[data-baseweb="input"] {{
+        border: none !important; background: transparent !important; box-shadow: none !important;
+    }}
+    .st-key-vg_buscador_pill [data-testid="stNumberInput"] input {{ font-size: 15px !important; }}
+    .st-key-vg_buscador_pill [data-testid="stFormSubmitButton"] button {{
+        border-radius: 999px !important; background: {COLOR_NAVY_MARCA} !important;
+        border: none !important; padding: 10px 22px !important;
+    }}
+    .st-key-vg_buscador_pill [data-testid="stFormSubmitButton"] button p {{
+        color: #FFFFFF !important; font-weight: 700 !important;
+    }}
+    .st-key-vg_buscador_pill [data-testid="stFormSubmitButton"] button:hover {{ background: {COLOR_AZUL} !important; }}
+    .vg-buscador-nota {{ position: relative; font-size: 12px; color: #C7DCF0; margin-top: 10px; }}
+    /* "Limpiar búsqueda": solo texto subrayado, sin caja de botón en ningún estado (ni en
+       hover/focus, donde el estilo "secondary" de más arriba le pondría fondo azul claro
+       por defecto) — deliberadamente el elemento con menos peso visual de todo el hero. */
+    .st-key-vg_buscador_limpiar {{ display: inline-block; margin-top: 2px; }}
+    .st-key-vg_buscador_limpiar button,
+    .st-key-vg_buscador_limpiar button:hover,
+    .st-key-vg_buscador_limpiar button:focus,
+    .st-key-vg_buscador_limpiar button:active {{
+        background: transparent !important; border: none !important; box-shadow: none !important;
+        padding: 2px 0 !important; min-height: unset !important; width: auto !important;
+    }}
+    .st-key-vg_buscador_limpiar button p {{
+        color: #9FC1E0 !important; font-size: 12px !important; text-decoration: underline; font-weight: 500 !important;
+    }}
+    .st-key-vg_buscador_limpiar button:hover p {{ color: #FFFFFF !important; }}
+
+    /* En escritorio hay espacio de sobra a los lados, así que el hero puede ser más bajo y
+       fino sin perder legibilidad — se aprieta el aire vertical (paddings/márgenes), no el
+       contenido. En móvil se deja tal cual, donde el aire ayuda a que se note como banda
+       propia. */
+    @media (min-width: 769px) {{
+        .st-key-vg_buscador_hero {{ padding: 18px 32px 20px; }}
+        .st-key-vg_buscador_hero .vg-hero-kicker {{ margin-bottom: 8px; }}
+        .vg-buscador-hero-titulo {{ font-size: 17px; }}
+        .vg-buscador-hero-sub {{ margin-top: 3px; }}
+        .st-key-vg_buscador_pill {{ margin: 12px auto 0; }}
+        .vg-buscador-nota {{ margin-top: 6px; }}
+    }}
+
+    /* Resultado de la búsqueda: una franja ligera con un borde de color a la izquierda (el
+       mismo verde/naranja de "entra"/"fuera del plan"), sobre fondo blanco normal — sin
+       bloque de color grande, coherente con el resto de tarjetas finas de la app. */
+    .vg-resultado-cliente {{
+        background: #FFFFFF; border: 1px solid {COLOR_BORDE}; border-left: 4px solid {COLOR_NEUTRO};
+        border-radius: 4px 10px 10px 4px; padding: 16px 20px; margin-top: 14px;
+        box-shadow: 0 1px 4px rgba(0,37,74,0.05);
+    }}
+    .vg-resultado-fila-top {{ display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }}
+    .vg-resultado-etiqueta {{ font-size: 11px; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; color: {COLOR_TEXTO_TERCIARIO}; }}
+    .vg-resultado-id {{ font-size: 21px; font-weight: 800; color: {COLOR_TEXTO_PRINCIPAL}; margin-top: 2px; font-variant-numeric: tabular-nums; }}
+    .vg-resultado-chip {{ display: inline-block; padding: 4px 12px; border-radius: 999px; font-size: 12px; font-weight: 700; }}
+    .vg-resultado-datos {{ display: flex; flex-wrap: wrap; gap: 26px; margin-top: 14px; }}
+    .vg-resultado-carrusel-nota {{ display: none; font-size: 11px; color: {COLOR_TEXTO_TERCIARIO}; margin-top: 6px; }}
+    /* En móvil, los cuatro datos pasan de "envolver en varias filas" a un carrusel
+       horizontal con swipe nativo (scroll-snap, sin JavaScript ni librerías): cada dato es
+       una "diapositiva" que encaja al soltar el dedo. */
+    @media (max-width: 768px) {{
+        .vg-resultado-datos {{
+            flex-wrap: nowrap;
+            overflow-x: auto;
+            scroll-snap-type: x mandatory;
+            -webkit-overflow-scrolling: touch;
+            gap: 14px;
+            padding-bottom: 2px;
+            scrollbar-width: none;
+        }}
+        .vg-resultado-datos::-webkit-scrollbar {{ display: none; }}
+        .vg-resultado-dato {{
+            scroll-snap-align: start;
+            flex: 0 0 auto;
+            min-width: 62%;
+            background: {COLOR_FONDO};
+            border-radius: 10px;
+            padding: 10px 14px;
+        }}
+        .vg-resultado-carrusel-nota {{ display: block; }}
+    }}
+    .vg-resultado-valor {{ font-size: 16px; font-weight: 700; color: {COLOR_TEXTO_PRINCIPAL}; margin-top: 3px; font-variant-numeric: tabular-nums; }}
+    .vg-resultado-texto {{ font-size: 13px; color: {COLOR_TEXTO_SECUNDARIO}; line-height: 1.6; margin-top: 14px; }}
+    .vg-resultado-texto strong {{ color: {COLOR_TEXTO_PRINCIPAL}; }}
 
     @media (prefers-reduced-motion: reduce) {{
         .vg-hero-red {{ animation: none; }}
@@ -791,6 +1014,63 @@ def grafico_presupuesto(tabla_resultado):
     return figura
 
 
+def _delta_pct(valor_bajo, valor_alto):
+    if not valor_alto:
+        return 0.0
+    return (valor_bajo - valor_alto) / valor_alto * 100
+
+
+def tarjeta_comparativa(etiqueta, valor_alto, valor_bajo, formato):
+    """Tarjeta 'alto valor vs. bajo valor' para 'Perfil de segmentos': dos cifras grandes,
+    sin eje ni barra — a propósito, para que se lea distinto del resto de la app (que usa
+    gráficos de Plotly). Bajo un umbral de diferencia se marca como '≈ igual' en vez de dar
+    un porcentaje que sugeriría una diferencia real donde no la hay."""
+    delta = _delta_pct(valor_bajo, valor_alto)
+    similar = abs(delta) < 8
+    color_delta = COLOR_TEXTO_TERCIARIO if similar else (COLOR_EXITO if delta > 0 else COLOR_RIESGO)
+    texto_delta = "≈ igual" if similar else porcentaje(delta, decimales=0, con_signo=True)
+    st.markdown(f"""
+    <div class="vg-comparativa-tarjeta">
+        <div class="vg-comparativa-etiqueta">{etiqueta}</div>
+        <div class="vg-comparativa-fila">
+            <div>
+                <div class="vg-comparativa-grupo">Alto valor</div>
+                <div class="vg-comparativa-valor">{formato(valor_alto)}</div>
+            </div>
+            <div style="text-align:right;">
+                <div class="vg-comparativa-grupo">Bajo valor</div>
+                <div class="vg-comparativa-valor">{formato(valor_bajo)}</div>
+            </div>
+        </div>
+        <div class="vg-comparativa-delta" style="color:{color_delta};">{texto_delta}</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+def pictograma_campanas(tabla_perfil):
+    """Campañas recibidas por segmento como icono repetido (uno por campaña, redondeado),
+    no como barra — la brecha entre 'alto valor' y 'bajo valor' se cuenta a simple vista en
+    vez de compararse en longitud de eje."""
+    datos = tabla_perfil.sort_values('peso_prioridad', ascending=False)
+    filas_html = []
+    for _, fila in datos.iterrows():
+        color = GRUPOS_TENDENCIA[grupo_tendencia(fila['cuadrante'])]
+        n_iconos = max(1, round(fila['n_campanas']))
+        iconos_html = "".join(f"<span class='vg-pictograma-icono' style='background:{color};'></span>" for _ in range(n_iconos))
+        cifra = f"{fila['n_campanas']:.1f}".replace(".", ",")
+        filas_html.append(f"""
+        <div class="vg-pictograma-fila">
+            <div class="vg-pictograma-etiqueta">
+                <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:{color}; margin-right:7px;"></span>
+                {etiqueta_corta(fila['cuadrante'])}
+            </div>
+            <div class="vg-pictograma-iconos">{iconos_html}</div>
+            <div class="vg-pictograma-cifra">{cifra} campañas de media · {euros(fila['descuento_total'])} en descuentos usados</div>
+        </div>
+        """)
+    st.markdown("".join(filas_html), unsafe_allow_html=True)
+
+
 def grafico_sensibilidad(curva, curva_igual, presupuesto_actual, pct_actual):
     datos = curva.copy()
     datos['presupuesto_texto'] = datos['presupuesto'].apply(lambda v: euros(v))
@@ -846,25 +1126,43 @@ def grafico_sensibilidad(curva, curva_igual, presupuesto_actual, pct_actual):
     return figura
 
 
-def ficha_cliente(datos_cliente, coste_por_hogar):
+def resultado_cliente_buscador(datos_cliente, coste_por_hogar):
+    """Resultado de 'Consulta individual': una franja fina con borde de color a la izquierda
+    sobre fondo blanco normal — deliberadamente ligero, sin bloque de color grande ni tarjeta
+    anidada dentro de otra caja. Vive tanto en Inicio (antes de calcular nada, 'cubierto' es
+    None) como en Resultados (ya con el reparto calculado)."""
     cubierto = datos_cliente['cubierto']
-    color_chip = COLOR_EXITO if cubierto else COLOR_RIESGO
-    fondo_chip = "#E8F6EC" if cubierto else "#FDF3E3"
-    texto_chip = "Entra en el plan" if cubierto else "Fuera del plan"
     grupo = grupo_tendencia(datos_cliente['cuadrante'])
     color_grupo = GRUPOS_TENDENCIA[grupo]
 
-    if cubierto:
+    if cubierto is None:
+        color_chip = COLOR_TEXTO_TERCIARIO
+        fondo_chip = COLOR_FONDO
+        texto_chip = "Aún sin calcular"
+        explicacion = (
+            f"Ocupa la posición <strong>{miles(datos_cliente['posicion'])}</strong> por valor dentro de su segmento. "
+            f"Calcula un reparto de presupuesto para saber si quedaría cubierto."
+        )
+    elif cubierto:
+        color_chip = COLOR_EXITO
+        fondo_chip = "#E8F6EC"
+        texto_chip = "Entra en el plan"
         explicacion = (
             f"Está en la posición <strong>{miles(datos_cliente['posicion'])}</strong> por valor dentro de su segmento "
             f"y el presupuesto cubre a los <strong>{miles(datos_cliente['cubiertos'])}</strong> primeros, "
             f"así que entra en la lista de contacto."
         )
     elif datos_cliente['cubiertos'] == 0:
+        color_chip = COLOR_RIESGO
+        fondo_chip = "#FDF3E3"
+        texto_chip = "Fuera del plan"
         explicacion = (
             "Su segmento no ha recibido presupuesto en este reparto, así que ningún cliente de este grupo entra en la lista."
         )
     else:
+        color_chip = COLOR_RIESGO
+        fondo_chip = "#FDF3E3"
+        texto_chip = "Fuera del plan"
         faltan = datos_cliente['posicion'] - datos_cliente['cubiertos']
         explicacion = (
             f"Está en la posición <strong>{miles(datos_cliente['posicion'])}</strong> y el presupuesto llega hasta la "
@@ -873,45 +1171,46 @@ def ficha_cliente(datos_cliente, coste_por_hogar):
         )
 
     st.markdown(f"""
-    <div class="vg-ficha" style="border-top-color:{color_chip};">
-        <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
+    <div class="vg-resultado-cliente" style="border-left-color:{color_chip};">
+        <div class="vg-resultado-fila-top">
             <div>
-                <div class="vg-dato">Cliente</div>
-                <div style="font-size:26px; font-weight:700; color:{COLOR_TEXTO_PRINCIPAL};">
-                    #{datos_cliente['household_key']}
-                </div>
+                <div class="vg-resultado-etiqueta">Cliente</div>
+                <div class="vg-resultado-id">#{datos_cliente['household_key']}</div>
             </div>
-            <div class="vg-chip" style="background:{fondo_chip}; color:{color_chip};">{texto_chip}</div>
+            <div class="vg-resultado-chip" style="background:{fondo_chip}; color:{color_chip};">{texto_chip}</div>
         </div>
-        <div style="height:1px; background:{COLOR_BORDE}; margin:20px 0;"></div>
-        <div style="display:flex; flex-wrap:wrap; gap:36px;">
-            <div>
-                <div class="vg-dato">Valor histórico</div>
-                <div class="vg-dato-valor">{euros(datos_cliente['valor_historico'], 2)}</div>
+        <div class="vg-resultado-datos">
+            <div class="vg-resultado-dato">
+                <div class="vg-resultado-etiqueta">Valor histórico</div>
+                <div class="vg-resultado-valor">{euros(datos_cliente['valor_historico'], 2)}</div>
             </div>
-            <div>
-                <div class="vg-dato">Valor futuro estimado</div>
-                <div class="vg-dato-valor">{euros(datos_cliente['valor_futuro'], 2)}</div>
+            <div class="vg-resultado-dato">
+                <div class="vg-resultado-etiqueta">Valor futuro estimado</div>
+                <div class="vg-resultado-valor">{euros(datos_cliente['valor_futuro'], 2)}</div>
             </div>
-            <div>
-                <div class="vg-dato">Segmento</div>
-                <div class="vg-dato-valor" style="font-size:16px; padding-top:4px;">
-                    <span style="display:inline-block; width:9px; height:9px; border-radius:50%; background:{color_grupo}; margin-right:7px;"></span>
+            <div class="vg-resultado-dato">
+                <div class="vg-resultado-etiqueta">Segmento</div>
+                <div class="vg-resultado-valor" style="font-size:14px;">
+                    <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:{color_grupo}; margin-right:7px;"></span>
                     {datos_cliente['cuadrante']}
                 </div>
             </div>
-            <div>
-                <div class="vg-dato">Posición por valor en su segmento</div>
-                <div class="vg-dato-valor">{miles(datos_cliente['posicion'])} de {miles(datos_cliente['total_segmento'])}</div>
+            <div class="vg-resultado-dato">
+                <div class="vg-resultado-etiqueta">Posición en su segmento</div>
+                <div class="vg-resultado-valor">{miles(datos_cliente['posicion'])} de {miles(datos_cliente['total_segmento'])}</div>
             </div>
         </div>
-        <div style="height:1px; background:{COLOR_BORDE}; margin:20px 0;"></div>
-        <div style="font-size:14px; color:{COLOR_TEXTO_SECUNDARIO}; line-height:1.6;">{explicacion}</div>
+        <div class="vg-resultado-carrusel-nota">‹ desliza para ver más ›</div>
+        <div class="vg-resultado-texto">{explicacion}</div>
     </div>
     """, unsafe_allow_html=True)
 
 
-def consultar_cliente(household_key, segmentos, tabla_resultado):
+def consultar_cliente(household_key, segmentos, tabla_resultado=None):
+    """tabla_resultado es opcional: sin ella (buscando desde la pantalla de Inicio, antes de
+    calcular ningún reparto) se puede devolver igualmente el valor del cliente y su posición
+    por valor dentro del segmento — lo único que no se puede saber todavía es si el
+    presupuesto llegaría a cubrirlo, así que 'cubierto'/'cubiertos' quedan en None."""
     fila = segmentos[segmentos['household_key'] == household_key]
     if fila.empty:
         return None
@@ -920,8 +1219,15 @@ def consultar_cliente(household_key, segmentos, tabla_resultado):
     lista_segmento = backend.obtener_hogares_por_cuadrante(cuadrante, segmentos, tabla_resultado)
     coincidencias = lista_segmento.index[lista_segmento['household_key'] == household_key]
     posicion = int(coincidencias[0]) + 1 if len(coincidencias) else 0
-    fila_segmento = tabla_resultado[tabla_resultado['cuadrante'] == cuadrante]
-    cubiertos = int(fila_segmento.iloc[0]['hogares_cubiertos']) if not fila_segmento.empty else 0
+
+    if tabla_resultado is not None:
+        fila_segmento = tabla_resultado[tabla_resultado['cuadrante'] == cuadrante]
+        cubiertos = int(fila_segmento.iloc[0]['hogares_cubiertos']) if not fila_segmento.empty else 0
+        cubierto = bool(0 < posicion <= cubiertos)
+    else:
+        cubiertos = None
+        cubierto = None
+
     return {
         'household_key': int(household_key),
         'cuadrante': cuadrante,
@@ -930,7 +1236,7 @@ def consultar_cliente(household_key, segmentos, tabla_resultado):
         'posicion': posicion,
         'total_segmento': int(len(lista_segmento)),
         'cubiertos': cubiertos,
-        'cubierto': bool(0 < posicion <= cubiertos),
+        'cubierto': cubierto,
     }
 
 
@@ -963,6 +1269,11 @@ def obtener_tabla_base(_segmentos):
 
 
 @st.cache_data
+def obtener_tabla_perfil(_segmentos):
+    return backend.construir_tabla_perfil_segmentos(_segmentos)
+
+
+@st.cache_data
 def obtener_curva_sensibilidad(_tabla_base, _segmentos, coste_por_hogar, horizonte_semanas, presupuesto_max, equitativo=False):
     funcion_reparto = backend.repartir_presupuesto_equitativo if equitativo else backend.repartir_presupuesto
     return backend.curva_sensibilidad_presupuesto(
@@ -982,7 +1293,7 @@ with st.sidebar:
         if st.button("✕", key="btn_cerrar_movil", help="Cerrar parámetros"):
             st.session_state['vg_parametros_movil_abiertos'] = False
             st.rerun()
-    st.button("🏠  Inicio", use_container_width=False, on_click=volver_al_inicio, help="Limpia los resultados y vuelve a la pantalla inicial")
+    st.button("🏠  Inicio", use_container_width=True, on_click=volver_al_inicio, help="Limpia los resultados y vuelve a la pantalla inicial")
     st.markdown(f"<div style='height:1px; background:{COLOR_BORDE}; margin:14px 0 18px 0;'></div>", unsafe_allow_html=True)
     titulo_seccion("Parámetros")
     st.caption("Reparte tu presupuesto priorizando a los clientes con más valor y más riesgo de perderse.")
@@ -1032,6 +1343,7 @@ if calcular:
     st.session_state['retorno_incremental_total_igual'] = retorno_incremental_total_igual
     st.session_state['excedente_presupuesto_total'] = excedente_presupuesto_total
     st.session_state.pop('cliente_buscado', None)
+    st.session_state['seccion'] = "Resultados"  # por si la pestaña activa era la de un cliente que ya no existe
     if st.session_state['vg_parametros_movil_abiertos']:
         # El CSS que abre/cierra el panel en móvil se calcula al principio del script, antes
         # de llegar aquí — así que sin un rerun, esta misma ejecución seguiría mostrando el
@@ -1123,206 +1435,289 @@ if 'tabla_resultado' not in st.session_state:
         f"para obtener la lista de clientes a contactar.</div>",
         unsafe_allow_html=True
     )
+
 else:
-    tabla_resultado = st.session_state['tabla_resultado'].copy()
-    pct_cartera_protegida = st.session_state['pct_cartera_protegida']
-    retorno_incremental_total = st.session_state['retorno_incremental_total']
-    pct_igual = st.session_state.get('pct_cartera_protegida_igual', 0)
-    retorno_igual = st.session_state.get('retorno_incremental_total_igual', 0)
-    excedente_presupuesto_total = st.session_state.get('excedente_presupuesto_total', 0.0)
-    coste_usado = st.session_state.get('coste_por_hogar', coste_por_hogar)
-    horizonte_usado = st.session_state.get('horizonte_semanas', HORIZONTE_POR_DEFECTO)
-    diferencia_pct = pct_cartera_protegida - pct_igual
-    diferencia_retorno = retorno_incremental_total - retorno_igual
+    with st.container(key="vg_panel_resultados"):
+        tabla_resultado = st.session_state['tabla_resultado'].copy()
+        pct_cartera_protegida = st.session_state['pct_cartera_protegida']
+        retorno_incremental_total = st.session_state['retorno_incremental_total']
+        pct_igual = st.session_state.get('pct_cartera_protegida_igual', 0)
+        retorno_igual = st.session_state.get('retorno_incremental_total_igual', 0)
+        excedente_presupuesto_total = st.session_state.get('excedente_presupuesto_total', 0.0)
+        coste_usado = st.session_state.get('coste_por_hogar', coste_por_hogar)
+        horizonte_usado = st.session_state.get('horizonte_semanas', HORIZONTE_POR_DEFECTO)
+        diferencia_pct = pct_cartera_protegida - pct_igual
+        diferencia_retorno = retorno_incremental_total - retorno_igual
 
-    seccion = st.radio("Sección", SECCIONES, horizontal=True, label_visibility="collapsed", key="seccion")
-
-    st.markdown(
-        f"<div style='font-size:13px; color:{COLOR_TEXTO_TERCIARIO}; margin:10px 0 18px 0;'>"
-        f"Presupuesto de <strong style='color:{COLOR_TEXTO_SECUNDARIO};'>{euros(st.session_state.get('presupuesto', 0))}</strong>"
-        f" · coste de <strong style='color:{COLOR_TEXTO_SECUNDARIO};'>{euros(coste_usado, 2)}</strong> por cliente"
-        f" · horizonte de <strong style='color:{COLOR_TEXTO_SECUNDARIO};'>"
-        f"{ETIQUETAS_HORIZONTE.get(horizonte_usado, str(horizonte_usado) + ' semanas')}</strong></div>",
-        unsafe_allow_html=True
-    )
-
-    if seccion == "Resultados":
-        mostrar_excedente = excedente_presupuesto_total > 0.01
-        columnas_kpi = st.columns(4) if mostrar_excedente else st.columns(3)
-        col_k1, col_k2, col_k3 = columnas_kpi[0], columnas_kpi[1], columnas_kpi[2]
-        with col_k1:
-            tarjeta_kpi(
-                "% de cartera protegida",
-                porcentaje(pct_cartera_protegida),
-                f"vs {porcentaje(pct_igual)} en un reparto equitativo",
-                COLOR_EXITO if diferencia_pct > 0 else COLOR_TEXTO_TERCIARIO,
+        # Buscador de cliente como Search Hero: siempre visible, con la misma identidad que
+        # el hero de Inicio, en vez de escondido detrás de un botón que abre un drawer — es
+        # la acción más importante de esta pantalla, así que se ve así desde el primer
+        # momento. El resultado, una vez encontrado, se añade como una pestaña más dentro de
+        # "Sección" (debajo del hero).
+        etiqueta_tab_cliente = None
+        if 'cliente_buscado' in st.session_state:
+            datos_cliente_tab = consultar_cliente(
+                st.session_state['cliente_buscado'], segmentos, st.session_state['tabla_resultado']
             )
-        with col_k2:
-            tarjeta_kpi(
-                "Retorno incremental esperado",
-                euros(retorno_incremental_total),
-                f"vs {euros(retorno_igual)} en un reparto equitativo",
-                COLOR_EXITO if diferencia_retorno > 0 else COLOR_TEXTO_TERCIARIO,
+            if datos_cliente_tab is not None:
+                etiqueta_tab_cliente = f"👤 Cliente #{st.session_state['cliente_buscado']}"
+        opciones_seccion = SECCIONES_BASE + ([etiqueta_tab_cliente] if etiqueta_tab_cliente else [])
+
+        with st.container(key="vg_buscador_hero"):
+            st.markdown('<span class="vg-hero-kicker">Buscar cliente</span>', unsafe_allow_html=True)
+            st.markdown('<div class="vg-buscador-hero-titulo">¿Qué cliente quieres analizar?</div>', unsafe_allow_html=True)
+            st.markdown(
+                '<div class="vg-buscador-hero-sub">Consulta su valor, su posición en el segmento y si entra '
+                'en el plan de fidelización.</div>',
+                unsafe_allow_html=True,
             )
-        with col_k3:
-            tarjeta_kpi(
-                "Diferencia vs. reparto equitativo",
-                f"{diferencia_pct:+.1f}".replace(".", ",") + " pp",
-                "puntos porcentuales de cartera protegida",
-                COLOR_TEXTO_TERCIARIO,
-                color_cifra=COLOR_EXITO if diferencia_pct > 0 else COLOR_RIESGO,
+            ids_disponibles = segmentos['household_key']
+            with st.container(key="vg_buscador_pill"):
+                with st.form("busqueda_cliente"):
+                    col_input, col_boton = st.columns([4, 1])
+                    with col_input:
+                        id_buscado = st.number_input(
+                            "ID de cliente (household_key)",
+                            min_value=int(ids_disponibles.min()),
+                            max_value=int(ids_disponibles.max()),
+                            value=int(st.session_state['cliente_buscado']) if 'cliente_buscado' in st.session_state else None,
+                            step=1,
+                            format="%d",
+                            placeholder="🔍  Buscar por ID de cliente…",
+                            label_visibility="collapsed",
+                        )
+                    with col_boton:
+                        buscar = st.form_submit_button("Buscar", use_container_width=True)
+            st.markdown(
+                f"<div class='vg-buscador-nota'>IDs disponibles entre {miles(ids_disponibles.min())} y "
+                f"{miles(ids_disponibles.max())}.</div>",
+                unsafe_allow_html=True,
             )
-        if mostrar_excedente:
-            with columnas_kpi[3]:
-                tarjeta_kpi(
-                    "Excedente ya cubierto al 100%",
-                    euros(excedente_presupuesto_total),
-                    "presupuesto de segmentos totalmente cubiertos: margen para una segunda ola o un canal más intensivo",
-                    COLOR_TEXTO_TERCIARIO,
-                )
+            if 'cliente_buscado' in st.session_state:
+                with st.container(key="vg_buscador_limpiar"):
+                    if st.button("Limpiar búsqueda", key="vg_btn_limpiar_cliente"):
+                        st.session_state.pop('cliente_buscado', None)
+                        st.session_state['seccion'] = "Resultados"
+                        st.rerun()
 
-        st.markdown("<div style='height:24px;'></div>", unsafe_allow_html=True)
+            if buscar and id_buscado is not None:
+                datos_encontrados = consultar_cliente(int(id_buscado), segmentos, st.session_state['tabla_resultado'])
+                if datos_encontrados is None:
+                    st.markdown(
+                        "<div class='vg-resultado-cliente' style='border-left-color:"
+                        f"{COLOR_TEXTO_TERCIARIO}; text-align:left;'><div class='vg-resultado-texto' style='margin-top:0;'>"
+                        "Ese ID de cliente no está en la base.</div></div>",
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    st.session_state['cliente_buscado'] = int(id_buscado)
+                    st.session_state['seccion'] = f"👤 Cliente #{int(id_buscado)}"
+                    st.rerun()
 
-        with st.container(border=True):
-            encabezado_bloque(
-                "Presupuesto asignado por segmento",
-                "Ordenado de mayor a menor presupuesto; el color indica si el segmento pierde o gana valor",
-            )
-            st.plotly_chart(grafico_presupuesto(tabla_resultado), use_container_width=True, theme=None, config=CONFIG_PLOTLY)
+        seccion = st.radio(
+            "Sección", opciones_seccion, horizontal=True, label_visibility="collapsed", key="seccion"
+        )
 
-        st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
-
-        with st.container(border=True):
-            encabezado_bloque(
-                "¿Cuánto conviene gastar?",
-                "Cuanto más presupuesto, menos crece la cartera protegida — el punto navy marca dónde estás tú ahora",
-            )
-            presupuesto_max_curva = max(
-                tabla_base['n_hogares'].sum() * coste_usado * 1.5,
-                st.session_state.get('presupuesto', 0) * 1.3,
-                1.0,
-            )
-            curva_sensibilidad = obtener_curva_sensibilidad(
-                tabla_base, segmentos, coste_usado, horizonte_usado, presupuesto_max_curva
-            )
-            curva_sensibilidad_igual = obtener_curva_sensibilidad(
-                tabla_base, segmentos, coste_usado, horizonte_usado, presupuesto_max_curva, equitativo=True
-            )
-            st.plotly_chart(
-                grafico_sensibilidad(
-                    curva_sensibilidad, curva_sensibilidad_igual,
-                    st.session_state.get('presupuesto', 0), pct_cartera_protegida,
-                ),
-                use_container_width=True, theme=None, config=CONFIG_PLOTLY,
-            )
-
-        st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
-
-        with st.container(border=True):
-            encabezado_bloque(
-                "Detalle por segmento",
-                "El segmento en la fila superior es el de mayor prioridad",
-            )
-
-            tabla_ordenada = tabla_resultado.sort_values('presupuesto_asignado', ascending=False).reset_index(drop=True)
-            tabla_ordenada['prioridad'] = ""
-            tabla_ordenada.loc[0, 'prioridad'] = "Prioridad alta"
-
-            tabla_mostrar = tabla_ordenada[[
-                'cuadrante', 'prioridad', 'n_hogares', 'hogares_cubiertos',
-                'pct_hogares_cubiertos', 'presupuesto_asignado', 'techo_segmento'
-            ]].rename(columns=NOMBRES_COLUMNAS_SEGMENTOS)
-
-            def resaltar_fila_principal(fila):
-                if fila.name == 0:
-                    return [f'background-color: {COLOR_AZUL_TINTE}'] * len(fila)
-                return [''] * len(fila)
-
-            estilo = tabla_mostrar.style.apply(resaltar_fila_principal, axis=1).map(
-                lambda v: f'color: {COLOR_RIESGO}; font-weight:600;' if v == "Prioridad alta" else '', subset=['Prioridad']
-            )
-
-            st.dataframe(
-                estilo,
-                use_container_width=True,
-                hide_index=True,
-                column_config={
-                    'Presupuesto asignado (€)': st.column_config.NumberColumn(format="%.0f €"),
-                    'Límite máximo (€)': st.column_config.NumberColumn(format="%.0f €"),
-                    '% cubierto': st.column_config.NumberColumn(format="%.1f %%"),
-                }
-            )
-
-    elif seccion == "Clientes a contactar":
-        cuadrante_elegido = st.selectbox("Segmento de clientes", tabla_resultado['cuadrante'].unique())
-        hogares_lista = backend.obtener_hogares_por_cuadrante(cuadrante_elegido, segmentos, st.session_state['tabla_resultado'])
-        hogares_a_invertir = hogares_lista[hogares_lista['invertir']]
+        st.markdown("<div style='height:4px;'></div>", unsafe_allow_html=True)
 
         st.markdown(
-            f"<div style='color:{COLOR_TEXTO_SECUNDARIO}; margin-bottom:8px;'>"
-            f"<strong style='color:{COLOR_TEXTO_PRINCIPAL};'>{miles(len(hogares_a_invertir))}</strong> de "
-            f"<strong style='color:{COLOR_TEXTO_PRINCIPAL};'>{miles(len(hogares_lista))}</strong> clientes de este segmento se cubren con el presupuesto.</div>",
+            f"<div style='font-size:13px; color:{COLOR_TEXTO_TERCIARIO}; margin:10px 0 18px 0;'>"
+            f"Presupuesto de <strong style='color:{COLOR_TEXTO_SECUNDARIO};'>{euros(st.session_state.get('presupuesto', 0))}</strong>"
+            f" · coste de <strong style='color:{COLOR_TEXTO_SECUNDARIO};'>{euros(coste_usado, 2)}</strong> por cliente"
+            f" · horizonte de <strong style='color:{COLOR_TEXTO_SECUNDARIO};'>"
+            f"{ETIQUETAS_HORIZONTE.get(horizonte_usado, str(horizonte_usado) + ' semanas')}</strong></div>",
             unsafe_allow_html=True
         )
 
-        st.dataframe(
-            hogares_a_invertir.rename(columns=NOMBRES_COLUMNAS_HOGARES),
-            use_container_width=True, hide_index=True,
-            column_config={'Valor futuro estimado (€)': st.column_config.NumberColumn(format="%.2f €")}
-        )
-
-        csv = hogares_a_invertir.rename(columns=NOMBRES_COLUMNAS_HOGARES).to_csv(index=False).encode('utf-8')
-        st.download_button("Descargar lista (CSV)", csv, f"clientes_{cuadrante_elegido}.csv", "text/csv")
-
-    elif seccion == "Explicación":
-        with st.spinner("Generando la explicación con IA…"):
-            explicacion, es_ia = backend.generar_explicacion(
-                st.session_state['presupuesto'], st.session_state['tabla_resultado'], pct_cartera_protegida, retorno_incremental_total
-            )
-        etiqueta_fuente = "" if es_ia else f"<div style='font-size:12px; color:{COLOR_TEXTO_TERCIARIO}; margin-top:12px;'>Generado con plantilla</div>"
-        st.markdown(f"""
-        <div class="vg-ficha" style="line-height:1.7;">
-            {explicacion}
-            {etiqueta_fuente}
-        </div>
-        """, unsafe_allow_html=True)
-
-    else:
-        encabezado_bloque(
-            "Consulta por cliente",
-            "Busca un cliente por su ID para ver su valor estimado y si el presupuesto llega hasta él",
-        )
-
-        ids_disponibles = segmentos['household_key']
-        with st.form("busqueda_cliente"):
-            col_input, col_boton, _ = st.columns([2, 1, 3])
-            with col_input:
-                id_buscado = st.number_input(
-                    "ID de cliente (household_key)",
-                    min_value=int(ids_disponibles.min()),
-                    max_value=int(ids_disponibles.max()),
-                    value=int(st.session_state.get('cliente_buscado', ids_disponibles.min())),
-                    step=1,
-                    format="%d",
+        if seccion == "Resultados":
+            mostrar_excedente = excedente_presupuesto_total > 0.01
+            columnas_kpi = st.columns(4) if mostrar_excedente else st.columns(3)
+            col_k1, col_k2, col_k3 = columnas_kpi[0], columnas_kpi[1], columnas_kpi[2]
+            with col_k1:
+                tarjeta_kpi(
+                    "% de cartera protegida",
+                    porcentaje(pct_cartera_protegida),
+                    f"vs {porcentaje(pct_igual)} en un reparto equitativo",
+                    COLOR_EXITO if diferencia_pct > 0 else COLOR_TEXTO_TERCIARIO,
                 )
-            with col_boton:
-                st.markdown("<div style='height:26px;'></div>", unsafe_allow_html=True)
-                buscar = st.form_submit_button("Buscar", use_container_width=True)
+            with col_k2:
+                tarjeta_kpi(
+                    "Retorno incremental esperado",
+                    euros(retorno_incremental_total),
+                    f"vs {euros(retorno_igual)} en un reparto equitativo",
+                    COLOR_EXITO if diferencia_retorno > 0 else COLOR_TEXTO_TERCIARIO,
+                )
+            with col_k3:
+                tarjeta_kpi(
+                    "Diferencia vs. reparto equitativo",
+                    f"{diferencia_pct:+.1f}".replace(".", ",") + " pp",
+                    "puntos porcentuales de cartera protegida",
+                    COLOR_TEXTO_TERCIARIO,
+                    color_cifra=COLOR_EXITO if diferencia_pct > 0 else COLOR_RIESGO,
+                )
+            if mostrar_excedente:
+                with columnas_kpi[3]:
+                    tarjeta_kpi(
+                        "Excedente ya cubierto al 100%",
+                        euros(excedente_presupuesto_total),
+                        "presupuesto de segmentos totalmente cubiertos: margen para una segunda ola o un canal más intensivo",
+                        COLOR_TEXTO_TERCIARIO,
+                    )
 
-        st.caption(
-            f"IDs disponibles entre {miles(ids_disponibles.min())} y {miles(ids_disponibles.max())}. "
-            f"Pulsa Intro para buscar."
-        )
+            st.markdown("<div style='height:24px;'></div>", unsafe_allow_html=True)
 
-        if buscar:
-            st.session_state['cliente_buscado'] = int(id_buscado)
+            with st.container(border=True):
+                encabezado_bloque(
+                    "Presupuesto asignado por segmento",
+                    "Ordenado de mayor a menor presupuesto; el color indica si el segmento pierde o gana valor",
+                )
+                st.plotly_chart(grafico_presupuesto(tabla_resultado), use_container_width=True, theme=None, config=CONFIG_PLOTLY)
 
-        if 'cliente_buscado' in st.session_state:
-            datos_cliente = consultar_cliente(
-                st.session_state['cliente_buscado'], segmentos, st.session_state['tabla_resultado']
+            st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
+
+            with st.container(border=True):
+                encabezado_bloque(
+                    "¿Cuánto conviene gastar?",
+                    "Cuanto más presupuesto, menos crece la cartera protegida — el punto navy marca dónde estás tú ahora",
+                )
+                presupuesto_max_curva = max(
+                    tabla_base['n_hogares'].sum() * coste_usado * 1.5,
+                    st.session_state.get('presupuesto', 0) * 1.3,
+                    1.0,
+                )
+                curva_sensibilidad = obtener_curva_sensibilidad(
+                    tabla_base, segmentos, coste_usado, horizonte_usado, presupuesto_max_curva
+                )
+                curva_sensibilidad_igual = obtener_curva_sensibilidad(
+                    tabla_base, segmentos, coste_usado, horizonte_usado, presupuesto_max_curva, equitativo=True
+                )
+                st.plotly_chart(
+                    grafico_sensibilidad(
+                        curva_sensibilidad, curva_sensibilidad_igual,
+                        st.session_state.get('presupuesto', 0), pct_cartera_protegida,
+                    ),
+                    use_container_width=True, theme=None, config=CONFIG_PLOTLY,
+                )
+
+            st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
+
+            with st.container(border=True):
+                encabezado_bloque(
+                    "Detalle por segmento",
+                    "El segmento en la fila superior es el de mayor prioridad",
+                )
+
+                tabla_ordenada = tabla_resultado.sort_values('presupuesto_asignado', ascending=False).reset_index(drop=True)
+                tabla_ordenada['prioridad'] = ""
+                tabla_ordenada.loc[0, 'prioridad'] = "Prioridad alta"
+
+                tabla_mostrar = tabla_ordenada[[
+                    'cuadrante', 'prioridad', 'n_hogares', 'hogares_cubiertos',
+                    'pct_hogares_cubiertos', 'presupuesto_asignado', 'techo_segmento'
+                ]].rename(columns=NOMBRES_COLUMNAS_SEGMENTOS)
+
+                def resaltar_fila_principal(fila):
+                    if fila.name == 0:
+                        return [f'background-color: {COLOR_AZUL_TINTE}'] * len(fila)
+                    return [''] * len(fila)
+
+                estilo = tabla_mostrar.style.apply(resaltar_fila_principal, axis=1).map(
+                    lambda v: f'color: {COLOR_RIESGO}; font-weight:600;' if v == "Prioridad alta" else '', subset=['Prioridad']
+                )
+
+                st.dataframe(
+                    estilo,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        'Presupuesto asignado (€)': st.column_config.NumberColumn(format="%.0f €"),
+                        'Límite máximo (€)': st.column_config.NumberColumn(format="%.0f €"),
+                        '% cubierto': st.column_config.NumberColumn(format="%.1f %%"),
+                    }
+                )
+
+        elif seccion == "Perfil de segmentos":
+            tabla_perfil = obtener_tabla_perfil(segmentos)
+
+            alto_valor = tabla_perfil[tabla_perfil['cuadrante'].str.startswith('Alto valor')]
+            bajo_valor = tabla_perfil[tabla_perfil['cuadrante'].str.startswith('Bajo valor')]
+            n_campanas_alto = f"{alto_valor['n_campanas'].mean():.1f}".replace(".", ",")
+            n_campanas_bajo = f"{bajo_valor['n_campanas'].mean():.1f}".replace(".", ",")
+
+            # Todo el módulo (texto + tarjetas comparativas + pictograma) va dentro de un
+            # único st.container(key=...) para que el fondo crema y el borde dorado de
+            # ".vg-insight" (CSS, vía la clase st-key-...) los envuelva de verdad — un
+            # <div> abierto en un st.markdown y cerrado en otro NO los envolvería en el DOM
+            # real, cada llamada a st.markdown se renderiza como un fragmento aparte.
+            with st.container(key="vg_insight_perfil"):
+                st.markdown(f"""
+                <span class="vg-insight-kicker">LO QUE DICEN TUS DATOS</span>
+                <div class="vg-insight-titulo">¿Compran distinto, o compran menos seguido?</div>
+                <div class="vg-insight-texto">
+                    El segmento que <strong>cae</strong> no compra peor que el que crece — compra
+                    prácticamente igual de bien, solo que menos seguido. Y los segmentos de
+                    <strong>bajo valor</strong> apenas han recibido marketing hasta ahora
+                    (<strong>{n_campanas_bajo} campañas</strong> de media, frente a
+                    <strong>{n_campanas_alto}</strong> en los de alto valor) — antes de
+                    concluir que "no responden", apenas se les ha dado la oportunidad.
+                </div>
+                """, unsafe_allow_html=True)
+                col_c1, col_c2, col_c3 = st.columns(3)
+                with col_c1:
+                    tarjeta_comparativa(
+                        "Gasto medio por cesta",
+                        alto_valor['gasto_medio_cesta'].mean(), bajo_valor['gasto_medio_cesta'].mean(),
+                        lambda v: euros(v, 2),
+                    )
+                with col_c2:
+                    tarjeta_comparativa(
+                        "Productos por cesta",
+                        alto_valor['tamano_medio_cesta'].mean(), bajo_valor['tamano_medio_cesta'].mean(),
+                        lambda v: f"{v:.0f}",
+                    )
+                with col_c3:
+                    tarjeta_comparativa(
+                        "Categorías distintas",
+                        alto_valor['n_categorias_distintas'].mean(), bajo_valor['n_categorias_distintas'].mean(),
+                        lambda v: f"{v:.0f}",
+                    )
+
+                st.markdown("<div class='vg-insight-subtitulo'>Campañas recibidas, por segmento</div>", unsafe_allow_html=True)
+                pictograma_campanas(tabla_perfil)
+
+        elif seccion == "Clientes a contactar":
+            cuadrante_elegido = st.selectbox("Segmento de clientes", tabla_resultado['cuadrante'].unique())
+            hogares_lista = backend.obtener_hogares_por_cuadrante(cuadrante_elegido, segmentos, st.session_state['tabla_resultado'])
+            hogares_a_invertir = hogares_lista[hogares_lista['invertir']]
+
+            st.markdown(
+                f"<div style='color:{COLOR_TEXTO_SECUNDARIO}; margin-bottom:8px;'>"
+                f"<strong style='color:{COLOR_TEXTO_PRINCIPAL};'>{miles(len(hogares_a_invertir))}</strong> de "
+                f"<strong style='color:{COLOR_TEXTO_PRINCIPAL};'>{miles(len(hogares_lista))}</strong> clientes de este segmento se cubren con el presupuesto.</div>",
+                unsafe_allow_html=True
             )
-            st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
-            if datos_cliente is None:
-                st.warning("Ese ID de cliente no está en la base.")
-            else:
-                ficha_cliente(datos_cliente, coste_usado)
+
+            st.dataframe(
+                hogares_a_invertir.rename(columns=NOMBRES_COLUMNAS_HOGARES),
+                use_container_width=True, hide_index=True,
+                column_config={'Valor futuro estimado (€)': st.column_config.NumberColumn(format="%.2f €")}
+            )
+
+            csv = hogares_a_invertir.rename(columns=NOMBRES_COLUMNAS_HOGARES).to_csv(index=False).encode('utf-8')
+            st.download_button("Descargar lista (CSV)", csv, f"clientes_{cuadrante_elegido}.csv", "text/csv")
+
+        elif seccion == "Explicación":
+            with st.spinner("Generando la explicación con IA…"):
+                explicacion, es_ia = backend.generar_explicacion(
+                    st.session_state['presupuesto'], st.session_state['tabla_resultado'], pct_cartera_protegida, retorno_incremental_total
+                )
+            etiqueta_fuente = "" if es_ia else f"<div style='font-size:12px; color:{COLOR_TEXTO_TERCIARIO}; margin-top:12px;'>Generado con plantilla</div>"
+            st.markdown(f"""
+            <div class="vg-ficha" style="line-height:1.7;">
+                {explicacion}
+                {etiqueta_fuente}
+            </div>
+            """, unsafe_allow_html=True)
+
+        elif etiqueta_tab_cliente and seccion == etiqueta_tab_cliente:
+            resultado_cliente_buscador(datos_cliente_tab, coste_usado)

@@ -17,7 +17,14 @@ EFECTO_CAUSAL_SEMANAL = 17.79
 def cargar_datos(ruta_hogares='hogares_procesado.csv', ruta_predicciones='predicciones_clv_futuro.csv'):
     hogares = pd.read_csv(ruta_hogares)
     predicciones = pd.read_csv(ruta_predicciones)
-    segmentos = hogares[['household_key', 'cuadrante', 'nivel_valor', 'nivel_tendencia', 'clv_historico']].merge(
+    # Las seis últimas columnas (comportamiento de compra + exposición histórica a
+    # campañas) no las usa el reparto de presupuesto — se cargan para la pestaña
+    # "Perfil de segmentos" (ver construir_tabla_perfil_segmentos).
+    segmentos = hogares[[
+        'household_key', 'cuadrante', 'nivel_valor', 'nivel_tendencia', 'clv_historico',
+        'gasto_medio_cesta', 'tamano_medio_cesta', 'frecuencia_cestas', 'n_categorias_distintas',
+        'descuento_total', 'n_campanas',
+    ]].merge(
         predicciones, on='household_key', how='inner'
     )
     return segmentos
@@ -35,6 +42,20 @@ def construir_tabla_segmentos(segmentos):
     tabla['score'] = tabla['peso_prioridad'] * tabla['valor_futuro_total']
 
     return tabla
+
+def construir_tabla_perfil_segmentos(segmentos):
+    """Cómo compra cada segmento y cuánto marketing ha recibido hasta ahora — pensada para
+    la pestaña 'Perfil de segmentos' de la app, no para el cálculo del reparto en sí."""
+    tabla = segmentos.groupby('cuadrante').agg(
+        gasto_medio_cesta=('gasto_medio_cesta', 'mean'),
+        tamano_medio_cesta=('tamano_medio_cesta', 'mean'),
+        frecuencia_cestas=('frecuencia_cestas', 'mean'),
+        n_categorias_distintas=('n_categorias_distintas', 'mean'),
+        descuento_total=('descuento_total', 'mean'),
+        n_campanas=('n_campanas', 'mean'),
+    ).reset_index()
+    tabla['peso_prioridad'] = tabla['cuadrante'].map(PESOS_PRIORIDAD)
+    return tabla.sort_values('peso_prioridad', ascending=False).reset_index(drop=True)
 
 def repartir_presupuesto(presupuesto_total, tabla_segmentos, horizonte_semanas=52, efecto_semanal=EFECTO_CAUSAL_SEMANAL, coste_por_hogar=3.0):
     tabla = tabla_segmentos.copy()
@@ -193,13 +214,19 @@ def buscar_hogar(household_key, segmentos, tabla_cobertura):
         'cubierto': bool(cubierto),
     }
 
-def obtener_hogares_por_cuadrante(cuadrante, segmentos, tabla_cobertura):
+def obtener_hogares_por_cuadrante(cuadrante, segmentos, tabla_cobertura=None):
+    """tabla_cobertura es opcional: sin ella (p. ej. buscando un cliente antes de calcular
+    ningún reparto, desde la pantalla de Inicio) se puede seguir ordenando el segmento por
+    valor y saber la posición de un cliente, solo que ninguno se marca como 'invertir' porque
+    todavía no hay presupuesto asignado."""
     hogares_segmento = segmentos[segmentos['cuadrante'] == cuadrante].sort_values(
         'clv_futuro_predicho', ascending=False
     ).reset_index(drop=True)
 
-    fila = tabla_cobertura[tabla_cobertura['cuadrante'] == cuadrante]
-    n_cubiertos = int(fila.iloc[0]['hogares_cubiertos']) if not fila.empty else 0
+    n_cubiertos = 0
+    if tabla_cobertura is not None:
+        fila = tabla_cobertura[tabla_cobertura['cuadrante'] == cuadrante]
+        n_cubiertos = int(fila.iloc[0]['hogares_cubiertos']) if not fila.empty else 0
 
     hogares_segmento['invertir'] = False
     if n_cubiertos > 0:
