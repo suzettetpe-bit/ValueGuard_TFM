@@ -237,34 +237,6 @@ ESTILO_SIDEBAR_MOVIL_ABIERTA = (
     if st.session_state['vg_parametros_movil_abiertos'] else ''
 )
 
-# Misma técnica para el panel deslizante de "✨ Interpretación": el estado (abierto o no) se
-# decide en Python, pero hace falta leerlo ANTES de este bloque de estilos (donde vive el CSS
-# del panel, más abajo) para poder inyectar la regla condicional que lo hace entrar en pantalla
-# — de ahí que se inicialice aquí y no junto al resto de esa sección, más adelante en el script.
-if 'vg_ia_abierta' not in st.session_state:
-    st.session_state['vg_ia_abierta'] = False
-
-ESTILO_IA_ABIERTA = (
-    """
-    /* Al abrirse, el panel solo cambia su transform — de "fuera de pantalla" (translateX/Y del
-       100%, definido siempre arriba) a "en su sitio" (0) — así que el propio panel nunca
-       cambia de tamaño ni de relleno, solo entra deslizándose desde su borde. */
-    @media (min-width: 769px) {
-        .st-key-vg_ia_panel { transform: translateX(0) !important; }
-    }
-    @media (max-width: 768px) {
-        .st-key-vg_ia_panel { transform: translateY(0) !important; }
-    }
-    /* El velo se ve, pero nunca intercepta clics: en Streamlit no se le puede enganchar un
-       "clic fuera para cerrar" (los atributos onclick del HTML insertado se sanean), así que
-       si capturara clics (pointer-events: auto) bloquearía el resto de la página sin dar
-       ninguna forma de cerrar desde ahí — el bug real de "la app se queda congelada" al abrir
-       el panel. Solo se cierra con el botón "✕". Misma lección ya aplicada al panel de
-       parámetros móvil (sección 21). */
-    .vg-ia-velo { opacity: 1 !important; }
-    """
-    if st.session_state['vg_ia_abierta'] else ''
-)
 
 st.markdown(f"""
 <style>
@@ -891,70 +863,18 @@ st.markdown(f"""
     .vg-resultado-texto {{ font-size: 13px; color: {COLOR_TEXTO_SECUNDARIO}; line-height: 1.6; margin-top: 14px; }}
     .vg-resultado-texto strong {{ color: {COLOR_TEXTO_PRINCIPAL}; }}
 
-    /* Capa "✨ Interpretación": panel deslizante — no un botón suelto ni un modal encima de todo,
-       sino una ventana propia que entra desde el borde de la pantalla. `st.container(key=
-       "vg_ia_panel")` es el nodo persistente que Streamlit renderiza en TODAS las pasadas
-       (esté abierto o no, con o sin contenido dentro) — igual que el panel de parámetros móvil
-       (sección 21): al ser el mismo nodo en el mismo sitio del árbol, un cambio de `transform`
-       entre una pasada y la siguiente se anima con una transición CSS normal, aunque lo dispare
-       un st.rerun() y no JavaScript. En escritorio el panel vive fijo a la derecha, oculto con
-       `translateX(100%)` y entra con `translateX(0)`; en móvil vive fijo abajo, oculto con
-       `translateY(100%)` y entra con `translateY(0)` — misma técnica, distinto eje. El
-       disparador ("✨ Explicar con IA") es un nodo aparte (`vg_ia_trigger`), en el flujo normal
-       de la pestaña, que solo se renderiza mientras el panel está cerrado — así nunca conviven
-       los dos en pantalla. */
-    .st-key-vg_ia_panel {{
-        position: fixed; z-index: 1000; overflow-y: auto;
-        background: linear-gradient(165deg, {COLOR_IA_OSCURO} 0%, {COLOR_IA} 100%);
-        transition: transform .32s cubic-bezier(.22,.9,.32,1);
+    /* Capa "✨ Interpretación": ya NO es un botón que hay que pulsar ni un panel que hay que
+       abrir — se muestra directamente, entera, en cuanto se entra en la pestaña. Un solo
+       recuadro violeta, siempre visible, sin estado que gestionar (nada de session_state,
+       nada de abrir/cerrar) — la simplicidad que se pidió tras varias vueltas de un patrón de
+       interacción (botón -> tarjeta -> panel deslizante) que añadía pasos en vez de quitarlos. */
+    .vg-ia-panel-simple {{
+        background: linear-gradient(120deg, {COLOR_IA_OSCURO} 0%, {COLOR_IA} 100%);
+        border-radius: 18px; padding: 26px 28px; box-shadow: 0 10px 30px rgba(76,62,209,0.22);
+        animation: vg-ia-aparece .35s cubic-bezier(.22,.9,.32,1) both;
     }}
-    @media (min-width: 769px) {{
-        .st-key-vg_ia_panel {{
-            top: 0; right: 0; bottom: 0; left: auto; height: 100vh;
-            width: 400px; max-width: 92vw;
-            box-shadow: -18px 0 40px rgba(30,20,90,0.30);
-            padding: 30px 28px; transform: translateX(100%);
-        }}
-    }}
-    @media (max-width: 768px) {{
-        .st-key-vg_ia_panel {{
-            left: 0; right: 0; bottom: 0; top: auto; width: 100%;
-            max-height: 82vh; border-radius: 20px 20px 0 0;
-            box-shadow: 0 -18px 40px rgba(30,20,90,0.30);
-            padding: 16px 22px 30px; transform: translateY(100%);
-        }}
-    }}
-    {ESTILO_IA_ABIERTA}
-
-    /* Disparador: st.button nativo con key="vg_ia_trigger_btn" (Streamlit añade la clase
-       st-key-vg_ia_trigger_btn al propio botón). Relleno violeta sólido para que destaque de
-       inmediato frente a cualquier otro control de la app, con los tres estados de foco que
-       pide un componente accesible: hover, focus visible (teclado) y active (pulsado). */
-    .st-key-vg_ia_trigger_btn button {{
-        background: {COLOR_IA}; border: none !important;
-        border-radius: 999px !important; padding: 12px 22px !important;
-        box-shadow: 0 4px 14px rgba(76,62,209,0.32) !important;
-        transition: background .2s ease, box-shadow .2s ease, transform .15s ease !important;
-    }}
-    .st-key-vg_ia_trigger_btn button p {{
-        color: #FFFFFF !important; font-weight: 700 !important; font-size: 13.5px !important;
-        white-space: nowrap !important;
-    }}
-    .st-key-vg_ia_trigger_btn button:hover {{
-        background: {COLOR_IA_OSCURO} !important; box-shadow: 0 0 0 5px rgba(109,94,240,0.22) !important;
-    }}
-    .st-key-vg_ia_trigger_btn button:focus-visible {{
-        outline: 2px solid #FFFFFF !important; outline-offset: 2px !important;
-        box-shadow: 0 0 0 5px rgba(109,94,240,0.38) !important;
-    }}
-    .st-key-vg_ia_trigger_btn button:active {{ transform: scale(0.96) !important; }}
-
-    /* Contenido del panel (kicker, titular, texto, fuente): entra con un fundido +
-       desplazamiento muy sutil, ligeramente retrasado respecto al deslizamiento del panel,
-       para que se lea como "revelado" y no como un parpadeo. */
-    .vg-ia-contenido {{ animation: vg-ia-aparece .3s cubic-bezier(.22,.9,.32,1) .12s both; }}
     @keyframes vg-ia-aparece {{
-        from {{ opacity: 0; transform: translateY(6px); }}
+        from {{ opacity: 0; transform: translateY(8px); }}
         to   {{ opacity: 1; transform: translateY(0); }}
     }}
     .vg-ia-kicker {{
@@ -967,56 +887,10 @@ st.markdown(f"""
     .vg-ia-texto strong {{ color: #FFFFFF; }}
     .vg-ia-fuente {{ font-size: 12px; color: #C9BEF2; margin-top: 12px; }}
 
-    /* Estado "analizando": un halo blanco que late, no un espiner genérico ni un "escribiendo…"
-       de chat — sigue siendo un panel de datos, no una conversación. */
-    .vg-ia-analizando {{ display: flex; align-items: center; gap: 10px; padding: 2px 0; }}
-    .vg-ia-halo {{
-        width: 12px; height: 12px; border-radius: 50%; background: #FFFFFF; flex: 0 0 auto;
-        animation: vg-ia-pulso 1.1s ease-in-out infinite;
-    }}
-    @keyframes vg-ia-pulso {{
-        0%, 100% {{ transform: scale(0.85); opacity: 0.5; }}
-        50% {{ transform: scale(1.15); opacity: 1; }}
-    }}
-    .vg-ia-analizando-texto {{ font-size: 13.5px; font-weight: 600; color: #FFFFFF; }}
-
-    /* Cierre: "✕" circular alineado a la derecha, arriba del todo del panel — no un enlace de
-       texto, así lee como el cierre de un panel, no como una acción secundaria de formulario.
-       Deliberadamente NO usa position:absolute (eso depende de qué nodo exacto de Streamlit
-       actúe como referencia, y ya se vio en otras partes de esta app que ese nodo puede no ser
-       el esperado): con flexbox + justify-content, el botón queda pegado al borde derecho
-       dentro del flujo normal, sin depender de ninguna suposición sobre el DOM interno. */
-    .st-key-vg_ia_cerrar {{ display: flex; justify-content: flex-end; margin-bottom: 6px; }}
-    .st-key-vg_ia_cerrar button {{
-        background: rgba(255,255,255,0.16) !important; border: none !important; border-radius: 50% !important;
-        width: 30px !important; height: 30px !important; padding: 0 !important; min-height: unset !important;
-        display: flex !important; align-items: center !important; justify-content: center !important;
-        transition: background .2s ease !important;
-    }}
-    .st-key-vg_ia_cerrar button p {{ color: #FFFFFF !important; font-size: 14px !important; font-weight: 700 !important; }}
-    .st-key-vg_ia_cerrar button:hover {{ background: rgba(255,255,255,0.32) !important; }}
-    .st-key-vg_ia_cerrar button:focus-visible {{ outline: 2px solid #FFFFFF !important; outline-offset: 2px !important; }}
-
-    /* Manija decorativa de la hoja inferior (solo móvil) y velo semitransparente detrás del
-       panel — mismo recurso ya usado y corregido para el panel de parámetros móvil (sección
-       21): un <div> normal, nunca un st.button, para que el color de fondo no dependa de
-       anular los estilos por defecto de un botón de Streamlit. El velo cubre toda la pantalla
-       en escritorio y en móvil (el panel es un drawer en ambos casos, ya no solo en móvil). */
-    .vg-ia-manija {{ display: none; }}
-    .vg-ia-velo {{
-        position: fixed; inset: 0; z-index: 999; background: rgba(15,23,42,0.45);
-        opacity: 0; pointer-events: none; transition: opacity .32s ease;
-    }}
-    @media (max-width: 768px) {{
-        .vg-ia-manija {{ display: block; width: 36px; height: 4px; border-radius: 999px; background: rgba(255,255,255,0.4); margin: 0 auto 14px; }}
-    }}
-
     @media (prefers-reduced-motion: reduce) {{
         .vg-hero-red {{ animation: none; }}
         .vg-tarjeta {{ transition: none; }}
-        .vg-ia-halo {{ animation: none; }}
-        .st-key-vg_ia_panel {{ transition: none; }}
-        .vg-ia-contenido {{ animation: none; }}
+        .vg-ia-panel-simple {{ animation: none; }}
     }}
 </style>
 """, unsafe_allow_html=True)
@@ -1512,6 +1386,19 @@ def obtener_curva_sensibilidad(_tabla_base, _segmentos, coste_por_hogar, horizon
     )
 
 
+@st.cache_data(show_spinner=False)
+def obtener_interpretacion(presupuesto, _tabla_resultado, pct_cartera_protegida, pct_cartera_protegida_igual,
+                            retorno_incremental_total, excedente_presupuesto_total):
+    # Cacheada por los mismos parámetros que determinan el resultado: mientras no cambien el
+    # presupuesto, el coste por cliente o el horizonte (que es lo que altera `_tabla_resultado`
+    # y los porcentajes), no se repite la llamada a OpenAI cada vez que se entra en la pestaña
+    # — solo la primera vez, y con el límite de 8s ya puesto en backend.py como red de seguridad.
+    return backend.generar_interpretacion(
+        presupuesto, _tabla_resultado, pct_cartera_protegida, pct_cartera_protegida_igual,
+        retorno_incremental_total, excedente_presupuesto_total,
+    )
+
+
 segmentos = obtener_segmentos()
 tabla_base = obtener_tabla_base(segmentos)
 
@@ -1571,7 +1458,6 @@ if calcular:
     st.session_state['excedente_presupuesto_total'] = excedente_presupuesto_total
     st.session_state.pop('cliente_buscado', None)
     st.session_state['seccion'] = "Resultados"  # por si la pestaña activa era la de un cliente que ya no existe
-    st.session_state['vg_ia_abierta'] = False  # una interpretación abierta hablaba del reparto anterior
     if st.session_state['vg_parametros_movil_abiertos']:
         # El CSS que abre/cierra el panel en móvil se calcula al principio del script, antes
         # de llegar aquí — así que sin un rerun, esta misma ejecución seguiría mostrando el
@@ -1935,70 +1821,30 @@ else:
             st.download_button("Descargar lista (CSV)", csv, f"clientes_{cuadrante_elegido}.csv", "text/csv")
 
         elif seccion == "✨ Interpretación":
-            if 'vg_ia_abierta' not in st.session_state:
-                st.session_state['vg_ia_abierta'] = False
+            # Se muestra directamente, sin botón ni panel que abrir — entrar en la pestaña ya
+            # es la acción. `obtener_interpretacion` está cacheada (@st.cache_data) por los
+            # mismos parámetros que el resto de cachés de la app (sección 19): así, si ya se
+            # calculó para este presupuesto/coste/horizonte, se sirve al instante en vez de
+            # volver a intentar la llamada a OpenAI en cada visita a la pestaña.
+            datos_ia, es_ia = obtener_interpretacion(
+                st.session_state['presupuesto'], st.session_state['tabla_resultado'], pct_cartera_protegida,
+                pct_igual, retorno_incremental_total, excedente_presupuesto_total
+            )
 
-            # Disparador: nodo aparte del panel, en el flujo normal de la pestaña, y solo se
-            # renderiza mientras el panel está cerrado — así nunca coexisten los dos en pantalla
-            # (si aparecieran ambos sería precisamente el bug de "el botón sale duplicado").
-            if not st.session_state['vg_ia_abierta']:
-                with st.container(key="vg_ia_trigger"):
-                    if st.button("✨ Explicar con IA", key="vg_ia_trigger_btn"):
-                        st.session_state['vg_ia_abierta'] = True
-                        st.rerun()
+            # Un único bloque de texto, sin desglosar en tarjetas de evidencia ni desplegables:
+            # el "por qué" de la IA, el "qué significa" y la acción sugerida se funden en un
+            # solo párrafo.
+            texto_ia = f"{datos_ia['explicacion']} {datos_ia['significado']} {datos_ia['accion']}"
+            etiqueta_fuente = "" if es_ia else "<div class='vg-ia-fuente'>Generado con plantilla (sin conexión a la IA)</div>"
 
-            # Velo detrás del panel — un <div> normal, nunca un st.button (ver sección 21 del
-            # historial): un botón aquí competiría con el estilo nativo de Streamlit. Se
-            # renderiza siempre; el CSS decide si se ve (solo cuando el panel está abierto).
-            st.markdown('<div class="vg-ia-velo"></div>', unsafe_allow_html=True)
-
-            # Panel: `st.container(key="vg_ia_panel")` se renderiza en TODAS las pasadas del
-            # script (abierto o no) para que sea el mismo nodo del DOM en el mismo sitio del
-            # árbol — solo así el cambio de `transform` (fuera de pantalla -> en su sitio) se
-            # anima con una transición CSS normal en vez de aparecer ya colocado sin animar.
-            with st.container(key="vg_ia_panel"):
-                if st.session_state['vg_ia_abierta']:
-                    st.markdown('<div class="vg-ia-manija"></div>', unsafe_allow_html=True)
-                    with st.container(key="vg_ia_cerrar"):
-                        if st.button("✕", key="vg_ia_cerrar_btn", help="Cerrar"):
-                            st.session_state['vg_ia_abierta'] = False
-                            st.rerun()
-
-                    marcador_ia = st.empty()
-                    marcador_ia.markdown("""
-                    <div class="vg-ia-contenido">
-                        <div class="vg-ia-kicker">✨ INTERPRETACIÓN IA</div>
-                        <div class="vg-ia-analizando">
-                            <span class="vg-ia-halo"></span>
-                            <span class="vg-ia-analizando-texto">Analizando el reparto de presupuesto…</span>
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    # Pausa breve deliberada: cuando la respuesta llega del respaldo (sin IA), el
-                    # cálculo es tan instantáneo que el halo no llegaría a verse — y el usuario debe
-                    # notar que "algo se ha analizado", aunque haya sido en Python puro.
-                    time.sleep(0.4)
-
-                    datos_ia, es_ia = backend.generar_interpretacion(
-                        st.session_state['presupuesto'], st.session_state['tabla_resultado'], pct_cartera_protegida,
-                        pct_igual, retorno_incremental_total, excedente_presupuesto_total
-                    )
-                    marcador_ia.empty()
-
-                    # Un único bloque de texto, sin desglosar en tarjetas de evidencia ni
-                    # desplegables: el "por qué" de la IA, el "qué significa" y la acción
-                    # sugerida se funden en un solo párrafo.
-                    texto_ia = f"{datos_ia['explicacion']} {datos_ia['significado']} {datos_ia['accion']}"
-                    etiqueta_fuente = "" if es_ia else "<div class='vg-ia-fuente'>Generado con plantilla (sin conexión a la IA)</div>"
-
-                    st.markdown(f"""
-                    <div class="vg-ia-contenido">
-                        <div class="vg-ia-kicker">✨ INTERPRETACIÓN IA</div>
-                        <div class="vg-ia-titular">{datos_ia['titular']}</div>
-                        <div class="vg-ia-texto">{texto_ia}</div>
-                        {etiqueta_fuente}
-                    </div>
-                    """, unsafe_allow_html=True)
+            st.markdown(f"""
+            <div class="vg-ia-panel-simple">
+                <div class="vg-ia-kicker">✨ INTERPRETACIÓN IA</div>
+                <div class="vg-ia-titular">{datos_ia['titular']}</div>
+                <div class="vg-ia-texto">{texto_ia}</div>
+                {etiqueta_fuente}
+            </div>
+            """, unsafe_allow_html=True)
 
         elif etiqueta_tab_cliente and seccion == etiqueta_tab_cliente:
             resultado_cliente_buscador(datos_cliente_tab, coste_usado)

@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import os
+import concurrent.futures
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -230,25 +231,19 @@ def explicacion_interpretacion_respaldo(segmento_principal):
         f"que otros segmentos, aunque no sea necesariamente el más grande."
     )
 
-def generar_interpretacion(presupuesto_total, tabla_resultado, pct_cartera_protegida, pct_cartera_protegida_igual,
-                            retorno_incremental_total, excedente_presupuesto_total):
-    datos = calcular_datos_interpretacion(
-        presupuesto_total, tabla_resultado, pct_cartera_protegida, pct_cartera_protegida_igual,
-        retorno_incremental_total, excedente_presupuesto_total,
-    )
-    prompt = construir_prompt_interpretacion(datos, tabla_resultado)
+def _generar_con_openai(prompt):
+    """Intenta OpenAI primero (proveedor original). Devuelve el texto generado, o None si
+    falla por cualquier motivo — nunca lanza, para que generar_interpretacion() pueda pasar
+    al siguiente proveedor sin más lógica que "¿vino algo o no?"."""
     try:
         from openai import OpenAI
         clave = os.getenv("OPENAI_API_KEY")
         if not clave:
-            raise RuntimeError(
-                "OPENAI_API_KEY no está definida en el entorno (revisa los 'Secrets' de la app en Streamlit Cloud)."
-            )
+            raise RuntimeError("OPENAI_API_KEY no está definida en el entorno.")
         # timeout corto y explícito: sin él, si la llamada se queda colgada (red lenta, proxy,
         # DNS, firewall corporativo — cualquier fallo que no devuelva un error inmediato), todo
         # el script de Streamlit se bloquea esperando indefinidamente y la app entera parece
         # congelada, sin ninguna forma de interactuar con ella hasta que la petición termine.
-        # Con el límite, si no responde a tiempo simplemente cae al respaldo en Python puro.
         client = OpenAI(api_key=clave, timeout=8.0, max_retries=0)
         respuesta = client.chat.completions.create(
             model="gpt-4o-mini",
@@ -256,16 +251,82 @@ def generar_interpretacion(presupuesto_total, tabla_resultado, pct_cartera_prote
             temperature=0.5,
             max_tokens=140,
         )
-        datos['explicacion'] = respuesta.choices[0].message.content.strip()
-        return datos, True
+        return respuesta.choices[0].message.content.strip()
     except Exception as error:
-        # No se silencia del todo: queda impreso en los logs de la app (en Streamlit Cloud,
-        # "Manage app" -> el panel de logs), para poder diagnosticar sin adivinar. El resto de
-        # la interpretación (titular, evidencia, significado, acción) sigue siendo la misma
-        # calculada en Python — solo cambia esta frase de "por qué".
-        print(f"[ValueGuard] Fallo generando la interpretación con IA: {type(error).__name__}: {error}")
-        datos['explicacion'] = explicacion_interpretacion_respaldo(datos['segmento_principal'])
-        return datos, False
+        print(f"[ValueGuard] Fallo con OpenAI: {type(error).__name__}: {error}")
+        return None
+
+
+def _generar_con_gemini(prompt):
+    """Segundo intento, gratuito: Google Gemini (nivel gratuito de Google AI Studio, sin
+    tarjeta de crédito — https://aistudio.google.com/apikey). Devuelve el texto generado, o
+    None si falla — mismo contrato que _generar_con_openai.
+
+    Se usa el SDK oficial `google-genai` (import "from google import genai") en vez de llamar
+    a la API REST a mano con `requests`: durante 2026 Google ha ido cambiando varias veces el
+    contrato de esa API REST (nuevo formato de clave con prefijo "AQ.", y el endpoint
+    `models/{modelo}:generateContent` dejó de responder), y cada cambio rompía la llamada
+    manual. El SDK oficial lo mantiene Google y sigue esos cambios por dentro, así que es más
+    robusto de cara al futuro — el coste es una dependencia nueva en el proyecto
+    (`google-genai`, añadida a requirements.txt). Como con OpenAI, la llamada se ejecuta en un
+    hilo aparte con límite de 20 segundos (más alto que el de OpenAI: los modelos "gemini-3.x"
+    tardan algo más en responder, y con 8s se cortaba la llamada antes de que llegara a
+    terminar — no era un cuelgue real, solo un timeout demasiado corto): si el SDK se queda
+    colgado por cualquier motivo, no se bloquea el script de Streamlit — se corta ahí y se pasa
+    a la plantilla. Importante: el
+    `ThreadPoolExecutor` NO se usa con `with` (que esperaría a que el hilo colgado terminase
+    antes de devolver el control, anulando el límite de tiempo) — se cierra con
+    `shutdown(wait=False)` para no bloquear aunque el hilo de fondo siga vivo un rato más."""
+    try:
+        from google import genai
+        clave = os.getenv("GEMINI_API_KEY")
+        if not clave:
+            raise RuntimeError("GEMINI_API_KEY no está definida en el entorno.")
+        client = genai.Client(api_key=clave)
+
+        def _llamar():
+            return client.models.generate_content(model="gemini-3.6-flash", contents=prompt)
+
+        ejecutor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        try:
+            respuesta = ejecutor.submit(_llamar).result(timeout=20.0)
+        finally:
+            ejecutor.shutdown(wait=False)
+
+        texto = (respuesta.text or "").strip()
+        if not texto:
+            raise RuntimeError("Gemini devolvió una respuesta vacía.")
+        return texto
+    except Exception as error:
+        print(f"[ValueGuard] Fallo con Gemini: {type(error).__name__}: {error}")
+        return None
+
+
+def generar_interpretacion(presupuesto_total, tabla_resultado, pct_cartera_protegida, pct_cartera_protegida_igual,
+                            retorno_incremental_total, excedente_presupuesto_total):
+    datos = calcular_datos_interpretacion(
+        presupuesto_total, tabla_resultado, pct_cartera_protegida, pct_cartera_protegida_igual,
+        retorno_incremental_total, excedente_presupuesto_total,
+    )
+    prompt = construir_prompt_interpretacion(datos, tabla_resultado)
+
+    # OpenAI queda deshabilitado a propósito: la cuenta no tiene facturación activa, así que
+    # intentarlo primero solo añadía una espera de hasta 8 segundos para nada. Se deja la
+    # función _generar_con_openai() ya escrita y sin usar, por si en el futuro se activa la
+    # facturación y se quiere volver a intentar antes de Gemini — bastaría con descomentar las
+    # tres líneas de abajo. Mientras tanto: Gemini (gratuito) -> plantilla en Python puro.
+    # texto = _generar_con_openai(prompt)
+    # if texto is not None:
+    #     datos['explicacion'] = texto
+    #     return datos, True
+
+    texto = _generar_con_gemini(prompt)
+    if texto is not None:
+        datos['explicacion'] = texto
+        return datos, True
+
+    datos['explicacion'] = explicacion_interpretacion_respaldo(datos['segmento_principal'])
+    return datos, False
 
 def buscar_hogar(household_key, segmentos, tabla_cobertura):
     hogar = segmentos[segmentos['household_key'] == household_key]
